@@ -2,20 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Transaction, Category } from '@/lib/supabase'
 
-type Summary = {
-  income: number
-  expense: number
-  balance: number
-}
-
-type CategoryExpense = {
-  category: Category
-  total: number
-}
-
-function formatYen(n: number) {
+function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
 }
 
@@ -24,165 +12,163 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+type Summary = {
+  totalBankBalance: number
+  totalFixedCosts: number
+  totalExpectedIncome: number
+  totalCardCharges: number
+  pendingSubTotal: number
+  totalPlannedExpenses: number
+  totalExpectedExpense: number
+  projectedBalance: number
+  resaleValue: number
+  nisaBalance: number
+  cashAmount: number
+  totalAssets: number
+  bankAccounts: { id: string; name: string; balance: number }[]
+}
+
+type RecentTransaction = {
+  id: string
+  date: string
+  amount: number
+  type: 'income' | 'expense'
+  memo: string | null
+  categories?: { name: string; icon: string }
+}
+
 export default function DashboardPage() {
-  const [month, setMonth] = useState(currentMonth())
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
+  const [summary, setSummary] = useState<Summary | null>(null)
+  const [recentTxns, setRecentTxns] = useState<RecentTransaction[]>([])
   const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    Promise.all([
-      fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
-      fetch('/api/categories').then((r) => r.json()),
-    ]).then(([txns, cats]) => {
-      setTransactions(Array.isArray(txns) ? txns : [])
-      setCategories(Array.isArray(cats) ? cats : [])
-      setLoading(false)
-    })
-  }, [month])
-
-  const summary: Summary = transactions.reduce(
-    (acc, t) => {
-      if (t.type === 'income') acc.income += t.amount
-      else acc.expense += t.amount
-      return acc
-    },
-    { income: 0, expense: 0, balance: 0 }
-  )
-  summary.balance = summary.income - summary.expense
-
-  const categoryExpenses: CategoryExpense[] = categories
-    .filter((c) => c.type === 'expense')
-    .map((cat) => ({
-      category: cat,
-      total: transactions
-        .filter((t) => t.type === 'expense' && t.category_id === cat.id)
-        .reduce((s, t) => s + t.amount, 0),
-    }))
-    .filter((ce) => ce.total > 0)
-    .sort((a, b) => b.total - a.total)
-
-  const recentTxns = transactions.slice(0, 5)
+  const month = currentMonth()
   const [year, mon] = month.split('-')
 
-  const prevMonth = () => {
-    const d = new Date(`${month}-01`)
-    d.setMonth(d.getMonth() - 1)
-    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
-  const nextMonth = () => {
-    const d = new Date(`${month}-01`)
-    d.setMonth(d.getMonth() + 1)
-    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
+  useEffect(() => {
+    Promise.all([
+      fetch(`/api/summary?month=${month}`).then((r) => r.json()),
+      fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
+    ]).then(([sum, txns]) => {
+      setSummary(sum)
+      setRecentTxns(Array.isArray(txns) ? txns.slice(0, 5) : [])
+      setLoading(false)
+    })
+  }, [])
+
+  if (loading) return <div className="text-center py-16 text-slate-400">読み込み中...</div>
+  if (!summary) return null
+
+  const balanceColor = summary.projectedBalance >= 0 ? 'text-indigo-700' : 'text-red-600'
 
   return (
     <div className="space-y-4">
-      {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">家計簿</h1>
-        <div className="flex gap-2 items-center">
-          <button onClick={prevMonth} className="p-1 rounded hover:bg-slate-200">◀</button>
-          <span className="text-sm font-medium">{year}年{mon}月</span>
-          <button onClick={nextMonth} className="p-1 rounded hover:bg-slate-200">▶</button>
+        <span className="text-sm text-slate-500">{year}年{mon}月</span>
+      </div>
+
+      {/* 総資産カード */}
+      <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-5 text-white shadow-lg">
+        <p className="text-xs opacity-70">総資産</p>
+        <p className="text-3xl font-bold mt-1">{yen(summary.totalAssets)}</p>
+        <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+          <div className="bg-white/10 rounded-lg p-2">
+            <p className="opacity-70">口座合計</p>
+            <p className="font-semibold">{yen(summary.totalBankBalance)}</p>
+          </div>
+          <div className="bg-white/10 rounded-lg p-2">
+            <p className="opacity-70">NISA</p>
+            <p className="font-semibold">{yen(summary.nisaBalance)}</p>
+          </div>
+          <div className="bg-white/10 rounded-lg p-2">
+            <p className="opacity-70">現金</p>
+            <p className="font-semibold">{yen(summary.cashAmount)}</p>
+          </div>
+          <div className="bg-white/10 rounded-lg p-2">
+            <p className="opacity-70">商材</p>
+            <p className="font-semibold">{yen(summary.resaleValue)}</p>
+          </div>
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-center py-12 text-slate-400">読み込み中...</div>
-      ) : (
-        <>
-          {/* サマリーカード */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-green-50 rounded-xl p-3 text-center">
-              <p className="text-xs text-green-600 font-medium">収入</p>
-              <p className="text-base font-bold text-green-700 mt-1">{formatYen(summary.income)}</p>
-            </div>
-            <div className="bg-red-50 rounded-xl p-3 text-center">
-              <p className="text-xs text-red-600 font-medium">支出</p>
-              <p className="text-base font-bold text-red-700 mt-1">{formatYen(summary.expense)}</p>
-            </div>
-            <div className={`rounded-xl p-3 text-center ${summary.balance >= 0 ? 'bg-indigo-50' : 'bg-orange-50'}`}>
-              <p className={`text-xs font-medium ${summary.balance >= 0 ? 'text-indigo-600' : 'text-orange-600'}`}>残高</p>
-              <p className={`text-base font-bold mt-1 ${summary.balance >= 0 ? 'text-indigo-700' : 'text-orange-700'}`}>
-                {formatYen(summary.balance)}
-              </p>
-            </div>
+      {/* 銀行口座一覧 */}
+      {summary.bankAccounts.length > 0 && (
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-sm font-semibold text-slate-700">銀行口座</h2>
+            <Link href="/accounts" className="text-xs text-indigo-600">管理</Link>
           </div>
-
-          {/* カテゴリ別支出 */}
-          {categoryExpenses.length > 0 && (
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-700 mb-3">カテゴリ別支出</h2>
-              <div className="space-y-2">
-                {categoryExpenses.map((ce) => {
-                  const pct = summary.expense > 0 ? (ce.total / summary.expense) * 100 : 0
-                  const overBudget = ce.category.budget_limit != null && ce.total > ce.category.budget_limit
-                  return (
-                    <div key={ce.category.id}>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>
-                          {ce.category.icon} {ce.category.name}
-                          {overBudget && <span className="ml-1 text-red-500 font-bold">超過</span>}
-                        </span>
-                        <span className={overBudget ? 'text-red-600 font-bold' : ''}>
-                          {formatYen(ce.total)}
-                          {ce.category.budget_limit && (
-                            <span className="text-slate-400"> /{formatYen(ce.category.budget_limit)}</span>
-                          )}
-                        </span>
-                      </div>
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: overBudget ? '#ef4444' : ce.category.color }}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+          {summary.bankAccounts.map((acc) => (
+            <div key={acc.id} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
+              <span className="text-sm">🏦 {acc.name}</span>
+              <span className="text-sm font-semibold">{yen(acc.balance)}</span>
             </div>
-          )}
-
-          {/* 最近の取引 */}
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="text-sm font-semibold text-slate-700">最近の取引</h2>
-              <Link href="/transactions" className="text-xs text-indigo-600">すべて見る</Link>
-            </div>
-            {recentTxns.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">この月の取引はありません</p>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {recentTxns.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{t.categories?.icon ?? '📦'}</span>
-                      <div>
-                        <p className="text-sm font-medium">{t.categories?.name ?? 'その他'}</p>
-                        <p className="text-xs text-slate-400">{t.date}{t.memo ? '　' + t.memo : ''}</p>
-                      </div>
-                    </div>
-                    <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                      {t.type === 'income' ? '+' : '-'}{formatYen(t.amount)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* クイック入力ボタン */}
-          <Link
-            href="/transactions"
-            className="block w-full bg-indigo-600 text-white text-center py-3 rounded-xl font-semibold shadow hover:bg-indigo-700 transition-colors"
-          >
-            ＋ 収支を入力する
-          </Link>
-        </>
+          ))}
+        </div>
       )}
+
+      {/* 見込み残高カード */}
+      <div className="bg-white rounded-xl p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">今月の見込み計算</h2>
+        <div className="space-y-2 text-sm">
+          <Row label="口座残高合計" value={summary.totalBankBalance} />
+          <Row label="固定費（口座引き落とし）" value={-summary.totalFixedCosts} minus />
+          <Row label="見込み給料" value={summary.totalExpectedIncome} plus />
+          <Row label="カード請求済み" value={-summary.totalCardCharges} minus />
+          <Row label="未請求サブスク" value={-summary.pendingSubTotal} minus />
+          <Row label="確定出費" value={-summary.totalPlannedExpenses} minus />
+          <div className="pt-2 border-t border-slate-200 flex justify-between font-bold">
+            <span>次月末残高予測</span>
+            <span className={balanceColor}>{yen(summary.projectedBalance)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 最近の取引 */}
+      <div className="bg-white rounded-xl p-4 shadow-sm">
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-sm font-semibold text-slate-700">最近の取引</h2>
+          <Link href="/transactions" className="text-xs text-indigo-600">すべて見る</Link>
+        </div>
+        {recentTxns.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-4">取引がありません</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {recentTxns.map((t) => (
+              <div key={t.id} className="flex items-center justify-between py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{t.categories?.icon ?? '📦'}</span>
+                  <div>
+                    <p className="text-sm font-medium">{t.categories?.name ?? 'その他'}</p>
+                    <p className="text-xs text-slate-400">{t.date}{t.memo ? '　' + t.memo : ''}</p>
+                  </div>
+                </div>
+                <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                  {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Link
+        href="/transactions"
+        className="block w-full bg-indigo-600 text-white text-center py-3 rounded-xl font-semibold shadow hover:bg-indigo-700 transition-colors"
+      >
+        ＋ 収支を入力する
+      </Link>
+    </div>
+  )
+}
+
+function Row({ label, value, plus, minus }: { label: string; value: number; plus?: boolean; minus?: boolean }) {
+  const color = plus ? 'text-green-600' : minus ? 'text-red-600' : 'text-slate-800'
+  const prefix = plus ? '+' : minus ? '-' : ''
+  return (
+    <div className="flex justify-between text-slate-600">
+      <span className="text-xs">{label}</span>
+      <span className={`text-xs font-medium ${color}`}>{prefix}{yen(Math.abs(value))}</span>
     </div>
   )
 }

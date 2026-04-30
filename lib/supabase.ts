@@ -36,9 +36,11 @@ export type Transaction = {
   amount: number
   type: 'income' | 'expense'
   category_id: string | null
+  credit_card_id: string | null
   memo: string | null
   created_at: string
   categories?: Category
+  credit_cards?: CreditCard
 }
 
 export type Investment = {
@@ -50,5 +52,135 @@ export type Investment = {
   purchase_date: string | null
   currency: string
   manual_price: number | null
+  created_at: string
+}
+
+export type BankAccount = {
+  id: string
+  name: string
+  balance: number
+  note: string | null
+  created_at: string
+}
+
+export type CreditCard = {
+  id: string
+  name: string
+  bank_account_id: string | null
+  closing_day: number
+  billing_day: number
+  color: string
+  created_at: string
+  bank_accounts?: BankAccount
+}
+
+export type Subscription = {
+  id: string
+  name: string
+  amount: number
+  credit_card_id: string | null
+  category_id: string | null
+  billing_day: number
+  is_active: boolean
+  created_at: string
+  credit_cards?: CreditCard
+}
+
+export type PointRedemption = {
+  id: string
+  credit_card_id: string
+  amount: number
+  apply_month: string
+  note: string | null
+  created_at: string
+}
+
+export type FixedCost = {
+  id: string
+  name: string
+  amount: number
+  bank_account_id: string | null
+  billing_day: number
+  is_active: boolean
+  created_at: string
+  bank_accounts?: BankAccount
+}
+
+export type ExpectedIncome = {
+  id: string
+  amount: number
+  month: string
+  description: string | null
+  created_at: string
+}
+
+export type PlannedExpense = {
+  id: string
+  name: string
+  amount: number
+  month: string
+  credit_card_id: string | null
+  is_done: boolean
+  created_at: string
+  credit_cards?: CreditCard
+}
+
+export type WishItem = {
+  id: string
+  name: string
+  price: number | null
+  priority: number
+  note: string | null
+  url: string | null
+  is_purchased: boolean
+  created_at: string
+}
+
+export type BigExpense = {
+  id: string
+  name: string
+  amount: number
+  planned_date: string | null
+  note: string | null
+  is_done: boolean
+  created_at: string
+}
+
+export type ResaleItem = {
+  id: string
+  name: string
+  quantity: number
+  purchase_price: number
+  sell_price: number | null
+  status: 'holding' | 'listed' | 'sold'
+  platform: string | null
+  note: string | null
+  sold_at: string | null
+  created_at: string
+}
+
+export type NisaSettings = {
+  id: string
+  current_balance: number
+  monthly_contribution: number
+  updated_at: string
+}
+
+export type CashBalance = {
+  id: string
+  amount: number
+  updated_at: string
+}
+
+export type CashMemo = {
+  id: string
+  content: string
+  created_at: string
+}
+
+export type CalendarMemo = {
+  id: string
+  date: string
+  memo: string | null
   created_at: string
 }

@@ -3,6 +3,22 @@
 import { useEffect, useState } from 'react'
 import { Investment } from '@/lib/supabase'
 
+const MARKET_ITEMS = [
+  { label: 'S&P500', ticker: '^GSPC', unit: 'pt' },
+  { label: '日経225', ticker: '^N225', unit: 'pt' },
+  { label: '金', ticker: 'GC=F', unit: 'USD' },
+  { label: 'FANG+', ticker: '^NYFANG', unit: 'pt' },
+  { label: 'オルカン参考(ACWI)', ticker: 'ACWI', unit: 'USD' },
+]
+
+type MarketPrice = {
+  label: string
+  ticker: string
+  unit: string
+  price: number | null
+  loading: boolean
+}
+
 function formatYen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
 }
@@ -40,6 +56,25 @@ export default function InvestmentsPage() {
   const [fetchingPrice, setFetchingPrice] = useState(false)
   const [form, setForm] = useState(defaultForm)
   const [usdJpy, setUsdJpy] = useState<number | null>(null)
+  const [marketPrices, setMarketPrices] = useState<MarketPrice[]>(
+    MARKET_ITEMS.map((m) => ({ ...m, price: null, loading: true }))
+  )
+
+  useEffect(() => {
+    MARKET_ITEMS.forEach(async (item, i) => {
+      try {
+        const res = await fetch(`/api/prices?ticker=${encodeURIComponent(item.ticker)}`)
+        const json = await res.json()
+        setMarketPrices((prev) =>
+          prev.map((m, idx) => idx === i ? { ...m, price: json.price ?? null, loading: false } : m)
+        )
+      } catch {
+        setMarketPrices((prev) =>
+          prev.map((m, idx) => idx === i ? { ...m, loading: false } : m)
+        )
+      }
+    })
+  }, [])
 
   const fetchInvestments = async () => {
     setLoading(true)
@@ -168,6 +203,28 @@ export default function InvestmentsPage() {
           onClick={() => { setForm(defaultForm); setShowForm(true) }}
           className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold"
         >＋ 追加</button>
+      </div>
+
+      {/* 相場モニター */}
+      <div className="bg-white rounded-xl p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">相場モニター</h2>
+        <div className="space-y-2">
+          {marketPrices.map((m) => (
+            <div key={m.ticker} className="flex justify-between items-center py-1 border-b border-slate-50 last:border-0">
+              <span className="text-sm text-slate-600">{m.label}</span>
+              <span className="text-sm font-medium">
+                {m.loading ? (
+                  <span className="text-slate-300">取得中...</span>
+                ) : m.price != null ? (
+                  `${m.price.toLocaleString('ja-JP', { maximumFractionDigits: 2 })} ${m.unit}`
+                ) : (
+                  <span className="text-slate-300">—</span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-slate-400 mt-2">※ 15〜20分遅延。オルカンはACWI（ETF）の参考値</p>
       </div>
 
       {/* 追加フォーム */}
