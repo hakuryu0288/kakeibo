@@ -91,21 +91,23 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 銀行口座一覧 */}
-      {summary.bankAccounts.length > 0 && (
-        <div className="bg-white rounded-xl p-4 shadow-sm">
-          <div className="flex justify-between items-center mb-2">
-            <h2 className="text-sm font-semibold text-slate-700">銀行口座</h2>
-            <Link href="/accounts" className="text-xs text-indigo-600">管理</Link>
-          </div>
-          {summary.bankAccounts.map((acc) => (
-            <div key={acc.id} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
-              <span className="text-sm">🏦 {acc.name}</span>
-              <span className="text-sm font-semibold">{yen(acc.balance)}</span>
-            </div>
-          ))}
+      {/* 銀行口座 + 現金 */}
+      <div className="bg-white rounded-xl p-4 shadow-sm">
+        <div className="flex justify-between items-center mb-2">
+          <h2 className="text-sm font-semibold text-slate-700">口座・現金</h2>
+          <Link href="/accounts" className="text-xs text-indigo-600">管理</Link>
         </div>
-      )}
+        {summary.bankAccounts.map((acc) => (
+          <div key={acc.id} className="flex justify-between items-center py-2 border-b border-slate-50">
+            <span className="text-sm">🏦 {acc.name}</span>
+            <span className="text-sm font-semibold">{yen(acc.balance)}</span>
+          </div>
+        ))}
+        <div className="flex justify-between items-center py-2">
+          <span className="text-sm">💴 現金</span>
+          <span className="text-sm font-semibold">{yen(summary.cashAmount)}</span>
+        </div>
+      </div>
 
       {/* 見込み残高カード */}
       <div className="bg-white rounded-xl p-4 shadow-sm">

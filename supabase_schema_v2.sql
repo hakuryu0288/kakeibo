@@ -1,6 +1,3 @@
--- transactionsにクレカ紐付けを追加
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS credit_card_id UUID REFERENCES credit_cards(id) ON DELETE SET NULL;
-
 -- 銀行口座
 CREATE TABLE bank_accounts (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

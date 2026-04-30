@@ -7,7 +7,7 @@ const navItems = [
   { href: '/', label: 'ホーム', icon: '🏠' },
   { href: '/accounts', label: 'カード', icon: '💳' },
   { href: '/plans', label: '計画', icon: '📋' },
-  { href: '/resale', label: '商材', icon: '🛍️' },
+  { href: '/assets', label: '資産', icon: '💰' },
   { href: '/menu', label: 'もっと', icon: '☰' },
 ]
 
