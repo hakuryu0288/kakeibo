@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from('transactions')
-    .select('*, categories(*), credit_cards(name, color), bank_accounts(name)')
+    .select('*, categories(*), credit_cards(name, color), bank_accounts(name), point_balances(name)')
     .order('date', { ascending: false })
 
   if (month) {
@@ -25,11 +25,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { date, amount, type, category_id, memo, credit_card_id, bank_account_id } = body
+  const { date, amount, type, category_id, memo, credit_card_id, bank_account_id, point_balance_id } = body
 
   const { data, error } = await supabase
     .from('transactions')
-    .insert({ date, amount, type, category_id, memo, credit_card_id: credit_card_id || null, bank_account_id: bank_account_id || null })
+    .insert({
+      date, amount, type, category_id, memo,
+      credit_card_id: credit_card_id || null,
+      bank_account_id: bank_account_id || null,
+      point_balance_id: point_balance_id || null,
+    })
     .select()
     .single()
 
@@ -38,20 +43,24 @@ export async function POST(req: NextRequest) {
   // 残高自動更新
   if (type === 'income') {
     if (bank_account_id) {
-      // 指定口座に入金
       const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', bank_account_id).single()
       if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + amount }).eq('id', bank_account_id)
     } else {
-      // 現金に入金
       const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
       if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
     }
-  } else if (type === 'expense' && !credit_card_id) {
-    // 現金支払い → 現金を減算
-    const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-    if (cash) await supabase.from('cash_balance').update({ amount: cash.amount - amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
+  } else if (type === 'expense') {
+    if (point_balance_id) {
+      // ポイント払い → ポイント残高を減算
+      const { data: pb } = await supabase.from('point_balances').select('balance').eq('id', point_balance_id).single()
+      if (pb) await supabase.from('point_balances').update({ balance: Number(pb.balance) - amount }).eq('id', point_balance_id)
+    } else if (!credit_card_id) {
+      // 現金払い → 現金を減算
+      const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
+      if (cash) await supabase.from('cash_balance').update({ amount: cash.amount - amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
+    }
+    // カード払いはcredit_card_idで紐付けのみ
   }
-  // カード支払いは credit_card_id で紐付けるだけ（残高はtransactionsから集計）
 
   return NextResponse.json(data, { status: 201 })
 }
@@ -59,7 +68,6 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const id = new URL(req.url).searchParams.get('id')
 
-  // 削除前に取引内容を取得して残高を戻す
   const { data: txn } = await supabase.from('transactions').select('*').eq('id', id).single()
 
   if (txn) {
@@ -71,9 +79,16 @@ export async function DELETE(req: NextRequest) {
         const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
         if (cash) await supabase.from('cash_balance').update({ amount: cash.amount - txn.amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
       }
-    } else if (txn.type === 'expense' && !txn.credit_card_id) {
-      const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-      if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + txn.amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
+    } else if (txn.type === 'expense') {
+      if (txn.point_balance_id) {
+        // ポイント払いを戻す
+        const { data: pb } = await supabase.from('point_balances').select('balance').eq('id', txn.point_balance_id).single()
+        if (pb) await supabase.from('point_balances').update({ balance: Number(pb.balance) + txn.amount }).eq('id', txn.point_balance_id)
+      } else if (!txn.credit_card_id) {
+        // 現金払いを戻す
+        const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
+        if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + txn.amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
+      }
     }
   }
 

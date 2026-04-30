@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, Category, CreditCard, BankAccount } from '@/lib/supabase'
+import { Transaction, Category, CreditCard, BankAccount, PointBalance } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -22,6 +22,7 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
+  const [points, setPoints] = useState<PointBalance[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -33,7 +34,8 @@ export default function TransactionsPage() {
     category_id: '',
     credit_card_id: '',
     bank_account_id: '',
-    payment: 'cash' as 'cash' | 'card' | 'bank',
+    point_balance_id: '',
+    payment: 'cash' as 'cash' | 'card' | 'bank' | 'points',
     memo: '',
   })
 
@@ -44,11 +46,13 @@ export default function TransactionsPage() {
       fetch('/api/categories').then((r) => r.json()),
       fetch('/api/credit-cards').then((r) => r.json()),
       fetch('/api/bank-accounts').then((r) => r.json()),
-    ]).then(([txns, cats, cds, accs]) => {
+      fetch('/api/point-balances').then((r) => r.json()),
+    ]).then(([txns, cats, cds, accs, pts]) => {
       setTransactions(Array.isArray(txns) ? txns : [])
       setCategories(Array.isArray(cats) ? cats : [])
       setCards(Array.isArray(cds) ? cds : [])
       setAccounts(Array.isArray(accs) ? accs : [])
+      setPoints(Array.isArray(pts) ? pts : [])
       setLoading(false)
     })
   }
@@ -58,7 +62,7 @@ export default function TransactionsPage() {
   const filteredCategories = categories.filter((c) => c.type === form.type)
 
   const handleTypeChange = (type: 'income' | 'expense') => {
-    setForm({ ...form, type, category_id: '', credit_card_id: '', bank_account_id: '', payment: 'cash' })
+    setForm({ ...form, type, category_id: '', credit_card_id: '', bank_account_id: '', point_balance_id: '', payment: 'cash' })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -74,6 +78,7 @@ export default function TransactionsPage() {
       memo: form.memo || null,
       credit_card_id: form.type === 'expense' && form.payment === 'card' ? form.credit_card_id || null : null,
       bank_account_id: form.type === 'income' && form.payment === 'bank' ? form.bank_account_id || null : null,
+      point_balance_id: form.type === 'expense' && form.payment === 'points' ? form.point_balance_id || null : null,
     }
 
     await fetch('/api/transactions', {
@@ -81,7 +86,7 @@ export default function TransactionsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    setForm({ date: today(), amount: '', type: 'expense', category_id: '', credit_card_id: '', bank_account_id: '', payment: 'cash', memo: '' })
+    setForm({ date: today(), amount: '', type: 'expense', category_id: '', credit_card_id: '', bank_account_id: '', point_balance_id: '', payment: 'cash', memo: '' })
     setShowForm(false)
     setSubmitting(false)
     fetchData()
@@ -93,11 +98,10 @@ export default function TransactionsPage() {
     fetchData()
   }
 
-  // カードごとの今月使用額
   const cardUsage = cards.map((card) => ({
     card,
     total: transactions
-      .filter((t) => t.type === 'expense' && (t as Transaction & { credit_card_id: string | null }).credit_card_id === card.id)
+      .filter((t) => t.type === 'expense' && t.credit_card_id === card.id)
       .reduce((s, t) => s + t.amount, 0),
   })).filter((c) => c.total > 0)
 
@@ -165,20 +169,30 @@ export default function TransactionsPage() {
           {form.type === 'expense' ? (
             <div>
               <label className="text-xs text-slate-500">支払い方法</label>
-              <div className="flex gap-2 mt-1">
-                <button type="button" onClick={() => setForm({ ...form, payment: 'cash', credit_card_id: '' })}
-                  className={`flex-1 py-1.5 rounded-lg text-sm border transition-colors ${form.payment === 'cash' ? 'bg-slate-700 text-white border-slate-700' : 'border-slate-200 text-slate-500'}`}>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                <button type="button" onClick={() => setForm({ ...form, payment: 'cash', credit_card_id: '', point_balance_id: '' })}
+                  className={`py-1.5 rounded-lg text-sm border transition-colors ${form.payment === 'cash' ? 'bg-slate-700 text-white border-slate-700' : 'border-slate-200 text-slate-500'}`}>
                   💴 現金
                 </button>
-                <button type="button" onClick={() => setForm({ ...form, payment: 'card' })}
-                  className={`flex-1 py-1.5 rounded-lg text-sm border transition-colors ${form.payment === 'card' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-500'}`}>
+                <button type="button" onClick={() => setForm({ ...form, payment: 'card', point_balance_id: '' })}
+                  className={`py-1.5 rounded-lg text-sm border transition-colors ${form.payment === 'card' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-500'}`}>
                   💳 カード
+                </button>
+                <button type="button" onClick={() => setForm({ ...form, payment: 'points', credit_card_id: '' })}
+                  className={`py-1.5 rounded-lg text-sm border transition-colors ${form.payment === 'points' ? 'bg-yellow-500 text-white border-yellow-500' : 'border-slate-200 text-slate-500'}`}>
+                  ⭐ ポイント
                 </button>
               </div>
               {form.payment === 'card' && (
                 <select value={form.credit_card_id} onChange={(e) => setForm({ ...form, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-2">
                   <option value="">カードを選択</option>
                   {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
+              {form.payment === 'points' && (
+                <select value={form.point_balance_id} onChange={(e) => setForm({ ...form, point_balance_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-2">
+                  <option value="">ポイントを選択</option>
+                  {points.map((p) => <option key={p.id} value={p.id}>{p.name}（{p.balance.toLocaleString('ja-JP')} pt）</option>)}
                 </select>
               )}
             </div>
@@ -238,31 +252,29 @@ export default function TransactionsPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="divide-y divide-slate-100">
-            {transactions.map((t) => {
-              const tx = t as Transaction & { credit_cards?: { name: string; color: string }; bank_accounts?: { name: string } }
-              return (
-                <div key={t.id} className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{t.categories?.icon ?? '📦'}</span>
-                    <div>
-                      <p className="text-sm font-medium">{t.categories?.name ?? 'その他'}</p>
-                      <p className="text-xs text-slate-400">
-                        {t.date}
-                        {tx.credit_cards ? ` · 💳 ${tx.credit_cards.name}` : ''}
-                        {tx.bank_accounts ? ` · 🏦 ${tx.bank_accounts.name}` : ''}
-                        {t.memo ? `　${t.memo}` : ''}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                      {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
-                    </span>
-                    <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-red-400 text-lg leading-none">×</button>
+            {transactions.map((t) => (
+              <div key={t.id} className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{t.categories?.icon ?? '📦'}</span>
+                  <div>
+                    <p className="text-sm font-medium">{t.categories?.name ?? 'その他'}</p>
+                    <p className="text-xs text-slate-400">
+                      {t.date}
+                      {t.credit_cards ? ` · 💳 ${t.credit_cards.name}` : ''}
+                      {t.bank_accounts ? ` · 🏦 ${t.bank_accounts.name}` : ''}
+                      {t.point_balances ? ` · ⭐ ${t.point_balances.name}` : ''}
+                      {t.memo ? `　${t.memo}` : ''}
+                    </p>
                   </div>
                 </div>
-              )
-            })}
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                    {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                  </span>
+                  <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-red-400 text-lg leading-none">×</button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

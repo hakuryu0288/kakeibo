@@ -30,6 +30,13 @@ export type Category = {
   created_at: string
 }
 
+export type PointBalance = {
+  id: string
+  name: string
+  balance: number
+  created_at: string
+}
+
 export type Transaction = {
   id: string
   date: string
@@ -37,10 +44,14 @@ export type Transaction = {
   type: 'income' | 'expense'
   category_id: string | null
   credit_card_id: string | null
+  bank_account_id: string | null
+  point_balance_id: string | null
   memo: string | null
   created_at: string
   categories?: Category
   credit_cards?: CreditCard
+  bank_accounts?: BankAccount
+  point_balances?: PointBalance
 }
 
 export type Investment = {
