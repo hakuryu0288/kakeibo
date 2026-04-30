@@ -42,8 +42,10 @@ export async function GET(req: NextRequest) {
   // 銀行残高合計
   const totalBankBalance = (bankAccounts ?? []).reduce((s: number, a: { balance: number }) => s + Number(a.balance), 0)
 
-  // 固定費合計（口座引き落とし）
-  const totalFixedCosts = (fixedCosts ?? []).reduce((s: number, f: { amount: number }) => s + f.amount, 0)
+  // 固定費合計（口座引き落とし）- billing_day が今日より先のもののみ（済みは口座残高に反映済み）
+  const totalFixedCosts = (fixedCosts ?? [])
+    .filter((f: { billing_day: number }) => f.billing_day > todayDay)
+    .reduce((s: number, f: { amount: number }) => s + f.amount, 0)
 
   // 見込み給料
   const totalExpectedIncome = (expectedIncomes ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)

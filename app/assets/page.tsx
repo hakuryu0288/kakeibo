@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ResaleItem, NisaSettings, ExpectedIncome } from '@/lib/supabase'
+import { ResaleItem, NisaSettings, ExpectedIncome, BankAccount } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -72,8 +72,11 @@ export default function AssetsPage() {
 
   // 見込み給料
   const [incomes, setIncomes] = useState<ExpectedIncome[]>([])
-  const [incomeForm, setIncomeForm] = useState({ month: currentMonth(), amount: '', description: '' })
+  const [incomeForm, setIncomeForm] = useState({ month: currentMonth(), amount: '', description: '', bank_account_id: '' })
   const [showIncomeForm, setShowIncomeForm] = useState(false)
+
+  // 銀行口座（給料の入金先）
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
 
   const [loading, setLoading] = useState(true)
 
@@ -83,7 +86,8 @@ export default function AssetsPage() {
       fetch('/api/nisa').then((r) => r.json()),
       fetch('/api/point-balances').then((r) => r.json()),
       fetch('/api/expected-income').then((r) => r.json()),
-    ]).then(([ri, ns, pb, ei]) => {
+      fetch('/api/bank-accounts').then((r) => r.json()),
+    ]).then(([ri, ns, pb, ei, ba]) => {
       setResaleItems(Array.isArray(ri) ? ri : [])
       if (ns?.id) {
         setNisa(ns)
@@ -92,6 +96,7 @@ export default function AssetsPage() {
       }
       setPoints(Array.isArray(pb) ? pb : [])
       setIncomes(Array.isArray(ei) ? ei : [])
+      setBankAccounts(Array.isArray(ba) ? ba : [])
       setLoading(false)
     })
   }
@@ -129,8 +134,8 @@ export default function AssetsPage() {
   // 見込み給料保存
   const saveIncome = async (e: React.FormEvent) => {
     e.preventDefault()
-    await fetch('/api/expected-income', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month: incomeForm.month, amount: parseInt(incomeForm.amount), description: incomeForm.description || null }) })
-    setIncomeForm({ month: currentMonth(), amount: '', description: '' })
+    await fetch('/api/expected-income', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month: incomeForm.month, amount: parseInt(incomeForm.amount), description: incomeForm.description || null, bank_account_id: incomeForm.bank_account_id || null }) })
+    setIncomeForm({ month: currentMonth(), amount: '', description: '', bank_account_id: '' })
     setShowIncomeForm(false)
     fetchAll()
   }
@@ -329,6 +334,10 @@ export default function AssetsPage() {
                 <div key={inc.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
                   <div>
                     <p className="text-sm font-medium">{inc.month.replace('-', '年')}月</p>
+                    {inc.bank_accounts
+                      ? <p className="text-xs text-indigo-500">🏦 {inc.bank_accounts.name}</p>
+                      : <p className="text-xs text-amber-500">口座未設定</p>
+                    }
                     {inc.description && <p className="text-xs text-slate-400">{inc.description}</p>}
                   </div>
                   <div className="flex items-center gap-2">
@@ -349,6 +358,13 @@ export default function AssetsPage() {
                       <label className="text-xs text-slate-500">金額（円）</label>
                       <input type="number" placeholder="250000" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" required />
                     </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">入金口座</label>
+                    <select value={incomeForm.bank_account_id} onChange={(e) => setIncomeForm({ ...incomeForm, bank_account_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1">
+                      <option value="">口座を選択</option>
+                      {bankAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
                   </div>
                   <input type="text" placeholder="メモ（任意）" value={incomeForm.description} onChange={(e) => setIncomeForm({ ...incomeForm, description: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
                   <div className="flex gap-2">

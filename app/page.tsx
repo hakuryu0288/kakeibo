@@ -63,7 +63,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">家計簿</h1>
+        <h1 className="text-xl font-bold">Kakeibo</h1>
         <div className="flex items-center gap-2">
           <span className="text-sm text-slate-500">{year}年{mon}月</span>
           <Link href="/calendar" className="bg-slate-100 hover:bg-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 transition-colors">📅 カレンダー</Link>

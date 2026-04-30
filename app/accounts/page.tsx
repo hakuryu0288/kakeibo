@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, Subscription, FixedCost } from '@/lib/supabase'
+import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, Subscription, FixedCost, ExpectedIncome } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -21,7 +21,7 @@ export default function AccountsPage() {
   const [cardTxns, setCardTxns] = useState<Transaction[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
-  const [totalExpectedIncome, setTotalExpectedIncome] = useState(0)
+  const [expectedIncomes, setExpectedIncomes] = useState<ExpectedIncome[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'card' | 'cash' | 'bank'>('card')
   const month = currentMonth()
@@ -49,7 +49,7 @@ export default function AccountsPage() {
       setCardTxns(Array.isArray(txns) ? txns.filter((t: Transaction) => t.type === 'expense') : [])
       setSubscriptions(Array.isArray(subs) ? subs : [])
       setFixedCosts(Array.isArray(fc) ? fc : [])
-      setTotalExpectedIncome(Array.isArray(ei) ? ei.reduce((s: number, e: { amount: number }) => s + e.amount, 0) : 0)
+      setExpectedIncomes(Array.isArray(ei) ? ei : [])
       setLoading(false)
     })
   }
@@ -213,85 +213,99 @@ export default function AccountsPage() {
           {/* 銀行口座タブ */}
           {tab === 'bank' && (
             <div className="space-y-3">
-              {/* 見込み給料バナー */}
-              {totalExpectedIncome > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-                  <p className="text-xs text-green-700 font-medium">💰 今月の見込み給料（全口座合計）: +{yen(totalExpectedIncome)}</p>
-                  <p className="text-xs text-green-500 mt-0.5">※下記の引き落とし後残高には含まれていません</p>
+              {/* 口座未割り当ての給料バナー */}
+              {expectedIncomes.filter((e) => !e.bank_account_id).reduce((s, e) => s + e.amount, 0) > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs text-amber-700 font-medium">
+                    ⚠️ 口座未割り当ての給料: +{yen(expectedIncomes.filter((e) => !e.bank_account_id).reduce((s, e) => s + e.amount, 0))}
+                  </p>
+                  <p className="text-xs text-amber-500 mt-0.5">資産→給料タブで入金口座を設定してください</p>
                 </div>
               )}
 
-              {accounts.map((acc) => {
-                // この口座に紐づくカード
-                const cardsForAcc = cards.filter((c) => c.bank_account_id === acc.id)
-                const cardIdsForAcc = new Set(cardsForAcc.map((c) => c.id))
+              {(() => {
+                const todayDay = new Date().getDate()
+                return accounts.map((acc) => {
+                  const cardsForAcc = cards.filter((c) => c.bank_account_id === acc.id)
+                  const cardIdsForAcc = new Set(cardsForAcc.map((c) => c.id))
 
-                // 今月のカード決済合計
-                const cardCharge = cardTxns
-                  .filter((t) => t.credit_card_id && cardIdsForAcc.has(t.credit_card_id))
-                  .reduce((s, t) => s + t.amount, 0)
+                  // 今月の見込み給料（この口座に入金予定）
+                  const incomeForAcc = expectedIncomes
+                    .filter((e) => e.bank_account_id === acc.id)
+                    .reduce((s, e) => s + e.amount, 0)
 
-                // 月額サブスク（カードが紐づくもの）
-                const subCharge = subscriptions
-                  .filter((s) => s.is_active && s.credit_card_id && cardIdsForAcc.has(s.credit_card_id))
-                  .reduce((s, sub) => s + sub.amount, 0)
+                  // 今月のカード決済合計
+                  const cardCharge = cardTxns
+                    .filter((t) => t.credit_card_id && cardIdsForAcc.has(t.credit_card_id))
+                    .reduce((s, t) => s + t.amount, 0)
 
-                // 固定費（口座引き落とし）
-                const fixedCharge = fixedCosts
-                  .filter((f) => f.is_active && f.bank_account_id === acc.id)
-                  .reduce((s, f) => s + f.amount, 0)
+                  // 月額サブスク（カードが紐づくもの）
+                  const subCharge = subscriptions
+                    .filter((s) => s.is_active && s.credit_card_id && cardIdsForAcc.has(s.credit_card_id))
+                    .reduce((s, sub) => s + sub.amount, 0)
 
-                const totalDeductions = cardCharge + subCharge + fixedCharge
-                const projectedBalance = Number(acc.balance) - totalDeductions
-                const isNegative = projectedBalance < 0
+                  // 固定費 — billing_day が今日より先のもののみ（済みは口座残高に反映済み）
+                  const fixedCharge = fixedCosts
+                    .filter((f) => f.is_active && f.bank_account_id === acc.id && f.billing_day > todayDay)
+                    .reduce((s, f) => s + f.amount, 0)
 
-                return (
-                  <div key={acc.id} className="bg-white rounded-xl p-4 shadow-sm">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-semibold">🏦 {acc.name}</p>
-                        {acc.note && <p className="text-xs text-slate-400 mt-0.5">{acc.note}</p>}
+                  const totalDeductions = cardCharge + subCharge + fixedCharge
+                  const projectedBalance = Number(acc.balance) + incomeForAcc - totalDeductions
+                  const isNegative = projectedBalance < 0
+
+                  return (
+                    <div key={acc.id} className="bg-white rounded-xl p-4 shadow-sm">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold">🏦 {acc.name}</p>
+                          {acc.note && <p className="text-xs text-slate-400 mt-0.5">{acc.note}</p>}
+                        </div>
+                        <p className="text-lg font-bold text-indigo-700">{yen(Number(acc.balance))}</p>
                       </div>
-                      <p className="text-lg font-bold text-indigo-700">{yen(Number(acc.balance))}</p>
-                    </div>
 
-                    {/* 引き落とし内訳 */}
-                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
-                      {cardCharge > 0 && (
-                        <div className="flex justify-between text-xs text-slate-500">
-                          <span>💳 カード請求（今月実績）</span>
-                          <span className="text-red-500 font-medium">-{yen(cardCharge)}</span>
+                      <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                        {incomeForAcc > 0 && (
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>💰 見込み給料</span>
+                            <span className="text-green-600 font-medium">+{yen(incomeForAcc)}</span>
+                          </div>
+                        )}
+                        {cardCharge > 0 && (
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>💳 カード請求（今月実績）</span>
+                            <span className="text-red-500 font-medium">-{yen(cardCharge)}</span>
+                          </div>
+                        )}
+                        {subCharge > 0 && (
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>🔄 サブスク（月額）</span>
+                            <span className="text-red-500 font-medium">-{yen(subCharge)}</span>
+                          </div>
+                        )}
+                        {fixedCharge > 0 && (
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>🏠 固定費（未引き落とし）</span>
+                            <span className="text-red-500 font-medium">-{yen(fixedCharge)}</span>
+                          </div>
+                        )}
+                        {incomeForAcc === 0 && totalDeductions === 0 && (
+                          <p className="text-xs text-slate-400">引き落とし予定なし</p>
+                        )}
+                        <div className={`flex justify-between text-sm font-bold pt-1.5 border-t border-slate-200 ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
+                          <span>月末残高見込み</span>
+                          <span>{isNegative ? '⚠️ ' : ''}{yen(projectedBalance)}</span>
                         </div>
-                      )}
-                      {subCharge > 0 && (
-                        <div className="flex justify-between text-xs text-slate-500">
-                          <span>🔄 サブスク（月額）</span>
-                          <span className="text-red-500 font-medium">-{yen(subCharge)}</span>
-                        </div>
-                      )}
-                      {fixedCharge > 0 && (
-                        <div className="flex justify-between text-xs text-slate-500">
-                          <span>🏠 固定費</span>
-                          <span className="text-red-500 font-medium">-{yen(fixedCharge)}</span>
-                        </div>
-                      )}
-                      {totalDeductions === 0 && (
-                        <p className="text-xs text-slate-400">引き落とし予定なし</p>
-                      )}
-                      <div className={`flex justify-between text-sm font-bold pt-1.5 border-t border-slate-200 ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
-                        <span>引き落とし後残高</span>
-                        <span>{isNegative ? '⚠️ ' : ''}{yen(projectedBalance)}</span>
+                      </div>
+
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={() => { setBankForm({ id: acc.id, name: acc.name, balance: String(acc.balance), note: acc.note ?? '' }); setShowBankForm(true) }}
+                          className="text-xs text-indigo-600 px-2 py-1 hover:bg-indigo-50 rounded">残高更新</button>
+                        <button onClick={() => deleteAccount(acc.id)} className="text-xs text-red-400 px-2 py-1 hover:bg-red-50 rounded">削除</button>
                       </div>
                     </div>
-
-                    <div className="flex gap-2 mt-3">
-                      <button onClick={() => { setBankForm({ id: acc.id, name: acc.name, balance: String(acc.balance), note: acc.note ?? '' }); setShowBankForm(true) }}
-                        className="text-xs text-indigo-600 px-2 py-1 hover:bg-indigo-50 rounded">残高更新</button>
-                      <button onClick={() => deleteAccount(acc.id)} className="text-xs text-red-400 px-2 py-1 hover:bg-red-50 rounded">削除</button>
-                    </div>
-                  </div>
-                )
-              })}
+                  )
+                })
+              })()}
 
               {showBankForm ? (
                 <form onSubmit={saveBankAccount} className="bg-white rounded-xl p-4 shadow-sm space-y-3">

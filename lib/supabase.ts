@@ -122,7 +122,9 @@ export type ExpectedIncome = {
   amount: number
   month: string
   description: string | null
+  bank_account_id: string | null
   created_at: string
+  bank_accounts?: { name: string }
 }
 
 export type PlannedExpense = {

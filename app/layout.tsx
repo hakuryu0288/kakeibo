@@ -3,7 +3,7 @@ import './globals.css'
 import BottomNav from '@/components/BottomNav'
 
 export const metadata: Metadata = {
-  title: '家計簿',
+  title: 'Kakeibo',
   description: '個人用家計簿アプリ',
   manifest: '/manifest.json',
 }
