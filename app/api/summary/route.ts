@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
   // 総資産
   const nisaBalance = nisaData ? Number(nisaData.current_balance) : 0
   const cashAmount = cashData ? Number(cashData.amount) : 0
-  const totalAssets = cashAmount + nisaBalance + resaleValue + totalBankBalance
+  const totalAssets = projectedBalance + nisaBalance + cashAmount + resaleValue
 
   return NextResponse.json({
     month,
