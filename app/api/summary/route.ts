@@ -65,11 +65,16 @@ export async function GET(req: NextRequest) {
   }
   const totalCardCharges = Object.values(cardCharges).reduce((s, v) => s + v, 0)
 
+  // 未請求サブスク（billing_day が今日より先 = まだ手動入力していない）
+  const pendingSubTotal = (subscriptions ?? [])
+    .filter((s: { billing_day: number }) => s.billing_day > todayDay)
+    .reduce((s: number, sub: { amount: number }) => s + sub.amount, 0)
+
   // 確定出費合計
   const totalPlannedExpenses = (plannedExpenses ?? []).reduce((s: number, p: { amount: number }) => s + p.amount, 0)
 
-  // 見込み支出 = 今月カード請求 + 確定出費
-  const totalExpectedExpense = totalCardCharges + totalPlannedExpenses
+  // 見込み支出 = 今月カード請求 + 未請求サブスク + 確定出費
+  const totalExpectedExpense = totalCardCharges + pendingSubTotal + totalPlannedExpenses
 
   // 次月末残高予測
   const projectedBalance = totalBankBalance - totalFixedCosts + totalExpectedIncome - totalExpectedExpense
@@ -91,6 +96,7 @@ export async function GET(req: NextRequest) {
     totalFixedCosts,
     totalExpectedIncome,
     totalCardCharges,
+    pendingSubTotal,
     totalPlannedExpenses,
     totalExpectedExpense,
     projectedBalance,

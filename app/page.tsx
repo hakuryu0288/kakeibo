@@ -17,6 +17,7 @@ type Summary = {
   totalFixedCosts: number
   totalExpectedIncome: number
   totalCardCharges: number
+  pendingSubTotal: number
   totalPlannedExpenses: number
   totalExpectedExpense: number
   projectedBalance: number
@@ -119,6 +120,7 @@ export default function DashboardPage() {
           <Row label="固定費（口座引き落とし）" value={-summary.totalFixedCosts} minus />
           <Row label="見込み給料" value={summary.totalExpectedIncome} plus />
           <Row label="カード請求済み" value={-summary.totalCardCharges} minus />
+          <Row label="未請求サブスク" value={-summary.pendingSubTotal} minus />
           <Row label="確定出費" value={-summary.totalPlannedExpenses} minus />
           <div className="pt-2 border-t border-slate-200 flex justify-between font-bold">
             <span>次月末残高予測</span>
