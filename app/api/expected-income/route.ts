@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const month = new URL(req.url).searchParams.get('month')
-  let query = supabase.from('expected_income').select('*, bank_accounts(name)').order('month', { ascending: false })
+  let query = supabase.from('expected_income').select('*').order('month', { ascending: false })
   if (month) query = query.eq('month', month)
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
