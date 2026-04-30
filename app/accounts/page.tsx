@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction } from '@/lib/supabase'
+import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, Subscription, FixedCost } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -18,7 +18,10 @@ export default function AccountsPage() {
   const [cards, setCards] = useState<CreditCard[]>([])
   const [cash, setCash] = useState<CashBalance | null>(null)
   const [cashMemos, setCashMemos] = useState<CashMemo[]>([])
-  const [cardTxns, setCardTxns] = useState<(Transaction & { credit_card_id: string | null })[]>([])
+  const [cardTxns, setCardTxns] = useState<Transaction[]>([])
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
+  const [totalExpectedIncome, setTotalExpectedIncome] = useState(0)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'card' | 'cash' | 'bank'>('card')
   const month = currentMonth()
@@ -35,15 +38,18 @@ export default function AccountsPage() {
       fetch('/api/cash').then((r) => r.json()),
       fetch('/api/cash-memos').then((r) => r.json()),
       fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
-    ]).then(([b, c, ca, cm, txns]) => {
+      fetch('/api/subscriptions').then((r) => r.json()),
+      fetch('/api/fixed-costs').then((r) => r.json()),
+      fetch(`/api/expected-income?month=${month}`).then((r) => r.json()),
+    ]).then(([b, c, ca, cm, txns, subs, fc, ei]) => {
       setAccounts(Array.isArray(b) ? b : [])
       setCards(Array.isArray(c) ? c : [])
       setCash(ca?.id ? ca : null)
       setCashMemos(Array.isArray(cm) ? cm : [])
-      const expenseTxns = Array.isArray(txns)
-        ? txns.filter((t: Transaction) => t.type === 'expense')
-        : []
-      setCardTxns(expenseTxns)
+      setCardTxns(Array.isArray(txns) ? txns.filter((t: Transaction) => t.type === 'expense') : [])
+      setSubscriptions(Array.isArray(subs) ? subs : [])
+      setFixedCosts(Array.isArray(fc) ? fc : [])
+      setTotalExpectedIncome(Array.isArray(ei) ? ei.reduce((s: number, e: { amount: number }) => s + e.amount, 0) : 0)
       setLoading(false)
     })
   }
@@ -207,22 +213,86 @@ export default function AccountsPage() {
           {/* 銀行口座タブ */}
           {tab === 'bank' && (
             <div className="space-y-3">
-              {accounts.map((acc) => (
-                <div key={acc.id} className="bg-white rounded-xl p-4 shadow-sm">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-semibold">🏦 {acc.name}</p>
-                      {acc.note && <p className="text-xs text-slate-400 mt-0.5">{acc.note}</p>}
-                    </div>
-                    <p className="text-lg font-bold text-indigo-700">{yen(acc.balance)}</p>
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <button onClick={() => { setBankForm({ id: acc.id, name: acc.name, balance: String(acc.balance), note: acc.note ?? '' }); setShowBankForm(true) }}
-                      className="text-xs text-indigo-600 px-2 py-1 hover:bg-indigo-50 rounded">残高更新</button>
-                    <button onClick={() => deleteAccount(acc.id)} className="text-xs text-red-400 px-2 py-1 hover:bg-red-50 rounded">削除</button>
-                  </div>
+              {/* 見込み給料バナー */}
+              {totalExpectedIncome > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                  <p className="text-xs text-green-700 font-medium">💰 今月の見込み給料（全口座合計）: +{yen(totalExpectedIncome)}</p>
+                  <p className="text-xs text-green-500 mt-0.5">※下記の引き落とし後残高には含まれていません</p>
                 </div>
-              ))}
+              )}
+
+              {accounts.map((acc) => {
+                // この口座に紐づくカード
+                const cardsForAcc = cards.filter((c) => c.bank_account_id === acc.id)
+                const cardIdsForAcc = new Set(cardsForAcc.map((c) => c.id))
+
+                // 今月のカード決済合計
+                const cardCharge = cardTxns
+                  .filter((t) => t.credit_card_id && cardIdsForAcc.has(t.credit_card_id))
+                  .reduce((s, t) => s + t.amount, 0)
+
+                // 月額サブスク（カードが紐づくもの）
+                const subCharge = subscriptions
+                  .filter((s) => s.is_active && s.credit_card_id && cardIdsForAcc.has(s.credit_card_id))
+                  .reduce((s, sub) => s + sub.amount, 0)
+
+                // 固定費（口座引き落とし）
+                const fixedCharge = fixedCosts
+                  .filter((f) => f.is_active && f.bank_account_id === acc.id)
+                  .reduce((s, f) => s + f.amount, 0)
+
+                const totalDeductions = cardCharge + subCharge + fixedCharge
+                const projectedBalance = Number(acc.balance) - totalDeductions
+                const isNegative = projectedBalance < 0
+
+                return (
+                  <div key={acc.id} className="bg-white rounded-xl p-4 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold">🏦 {acc.name}</p>
+                        {acc.note && <p className="text-xs text-slate-400 mt-0.5">{acc.note}</p>}
+                      </div>
+                      <p className="text-lg font-bold text-indigo-700">{yen(Number(acc.balance))}</p>
+                    </div>
+
+                    {/* 引き落とし内訳 */}
+                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                      {cardCharge > 0 && (
+                        <div className="flex justify-between text-xs text-slate-500">
+                          <span>💳 カード請求（今月実績）</span>
+                          <span className="text-red-500 font-medium">-{yen(cardCharge)}</span>
+                        </div>
+                      )}
+                      {subCharge > 0 && (
+                        <div className="flex justify-between text-xs text-slate-500">
+                          <span>🔄 サブスク（月額）</span>
+                          <span className="text-red-500 font-medium">-{yen(subCharge)}</span>
+                        </div>
+                      )}
+                      {fixedCharge > 0 && (
+                        <div className="flex justify-between text-xs text-slate-500">
+                          <span>🏠 固定費</span>
+                          <span className="text-red-500 font-medium">-{yen(fixedCharge)}</span>
+                        </div>
+                      )}
+                      {totalDeductions === 0 && (
+                        <p className="text-xs text-slate-400">引き落とし予定なし</p>
+                      )}
+                      <div className={`flex justify-between text-sm font-bold pt-1.5 border-t border-slate-200 ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
+                        <span>引き落とし後残高</span>
+                        <span>{isNegative ? '⚠️ ' : ''}{yen(projectedBalance)}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={() => { setBankForm({ id: acc.id, name: acc.name, balance: String(acc.balance), note: acc.note ?? '' }); setShowBankForm(true) }}
+                        className="text-xs text-indigo-600 px-2 py-1 hover:bg-indigo-50 rounded">残高更新</button>
+                      <button onClick={() => deleteAccount(acc.id)} className="text-xs text-red-400 px-2 py-1 hover:bg-red-50 rounded">削除</button>
+                    </div>
+                  </div>
+                )
+              })}
+
               {showBankForm ? (
                 <form onSubmit={saveBankAccount} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">{bankForm.id ? '口座を更新' : '口座を追加'}</h2>
