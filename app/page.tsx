@@ -76,8 +76,8 @@ export default function DashboardPage() {
         <p className="text-3xl font-bold mt-1">{yen(summary.totalAssets)}</p>
         <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
           <div className="bg-white/10 rounded-lg p-2">
-            <p className="opacity-70">口座合計</p>
-            <p className="font-semibold">{yen(summary.totalBankBalance)}</p>
+            <p className="opacity-70">次月末残高</p>
+            <p className="font-semibold">{yen(summary.projectedBalance)}</p>
           </div>
           <div className="bg-white/10 rounded-lg p-2">
             <p className="opacity-70">NISA</p>
