@@ -239,17 +239,12 @@ export default function AccountsPage() {
                     .filter((t) => t.credit_card_id && cardIdsForAcc.has(t.credit_card_id))
                     .reduce((s, t) => s + t.amount, 0)
 
-                  // 月額サブスク（カードが紐づくもの）
-                  const subCharge = subscriptions
-                    .filter((s) => s.is_active && s.credit_card_id && cardIdsForAcc.has(s.credit_card_id))
-                    .reduce((s, sub) => s + sub.amount, 0)
-
                   // 固定費 — billing_day が今日より先のもののみ（済みは口座残高に反映済み）
                   const fixedCharge = fixedCosts
                     .filter((f) => f.is_active && f.bank_account_id === acc.id && f.billing_day > todayDay)
                     .reduce((s, f) => s + f.amount, 0)
 
-                  const totalDeductions = cardCharge + subCharge + fixedCharge
+                  const totalDeductions = cardCharge + fixedCharge
                   const projectedBalance = Number(acc.balance) + incomeForAcc - totalDeductions
                   const isNegative = projectedBalance < 0
 
@@ -276,19 +271,13 @@ export default function AccountsPage() {
                             <span className="text-red-500 font-medium">-{yen(cardCharge)}</span>
                           </div>
                         )}
-                        {subCharge > 0 && (
-                          <div className="flex justify-between text-xs text-slate-500">
-                            <span>🔄 サブスク（月額）</span>
-                            <span className="text-red-500 font-medium">-{yen(subCharge)}</span>
-                          </div>
-                        )}
                         {fixedCharge > 0 && (
                           <div className="flex justify-between text-xs text-slate-500">
                             <span>🏠 固定費（未引き落とし）</span>
                             <span className="text-red-500 font-medium">-{yen(fixedCharge)}</span>
                           </div>
                         )}
-                        {incomeForAcc === 0 && totalDeductions === 0 && (
+                        {incomeForAcc === 0 && cardCharge === 0 && fixedCharge === 0 && (
                           <p className="text-xs text-slate-400">引き落とし予定なし</p>
                         )}
                         <div className={`flex justify-between text-sm font-bold pt-1.5 border-t border-slate-200 ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>

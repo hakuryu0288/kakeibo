@@ -50,38 +50,26 @@ export async function GET(req: NextRequest) {
   // 見込み給料
   const totalExpectedIncome = (expectedIncomes ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)
 
-  // 今月カード請求（カードごと）
+  // 今月カード請求（カードごと） - サブスクは手動入力済みのため除外
   const cardCharges: Record<string, number> = {}
   for (const card of (creditCards ?? [])) {
-    // 今月のカード支出トランザクション
     const txnTotal = (transactions ?? [])
       .filter((t: { type: string; credit_card_id: string }) => t.type === 'expense' && t.credit_card_id === card.id)
       .reduce((s: number, t: { amount: number }) => s + t.amount, 0)
 
-    // 今月billing_dayを過ぎたサブスク（請求済みとみなす）
-    const subTotal = (subscriptions ?? [])
-      .filter((s: { credit_card_id: string; billing_day: number }) => s.credit_card_id === card.id && s.billing_day <= todayDay)
-      .reduce((s: number, sub: { amount: number }) => s + sub.amount, 0)
-
-    // ポイント充当（マイナス）
     const pointTotal = (pointRedemptions ?? [])
       .filter((p: { credit_card_id: string }) => p.credit_card_id === card.id)
       .reduce((s: number, p: { amount: number }) => s + p.amount, 0)
 
-    cardCharges[card.id] = txnTotal + subTotal - pointTotal
+    cardCharges[card.id] = txnTotal - pointTotal
   }
   const totalCardCharges = Object.values(cardCharges).reduce((s, v) => s + v, 0)
-
-  // 未請求サブスク（今月のbilling_dayがまだ来ていない）
-  const pendingSubTotal = (subscriptions ?? [])
-    .filter((s: { billing_day: number }) => s.billing_day > todayDay)
-    .reduce((s: number, sub: { amount: number }) => s + sub.amount, 0)
 
   // 確定出費合計
   const totalPlannedExpenses = (plannedExpenses ?? []).reduce((s: number, p: { amount: number }) => s + p.amount, 0)
 
-  // 見込み支出 = 今月カード請求 + 未請求サブスク + 確定出費
-  const totalExpectedExpense = totalCardCharges + pendingSubTotal + totalPlannedExpenses
+  // 見込み支出 = 今月カード請求 + 確定出費
+  const totalExpectedExpense = totalCardCharges + totalPlannedExpenses
 
   // 次月末残高予測
   const projectedBalance = totalBankBalance - totalFixedCosts + totalExpectedIncome - totalExpectedExpense
@@ -103,7 +91,6 @@ export async function GET(req: NextRequest) {
     totalFixedCosts,
     totalExpectedIncome,
     totalCardCharges,
-    pendingSubTotal,
     totalPlannedExpenses,
     totalExpectedExpense,
     projectedBalance,
