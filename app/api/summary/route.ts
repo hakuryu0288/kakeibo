@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     supabase.from('planned_expenses').select('*').eq('month', month).eq('is_done', false),
     supabase.from('transactions').select('*').gte('date', `${month}-01`).lt('date', nextMonthStr(month)),
     supabase.from('point_redemptions').select('*').eq('apply_month', month),
-    supabase.from('resale_items').select('*').neq('status', 'sold'),
+    supabase.from('resale_items').select('*'),
     supabase.from('nisa_settings').select('*').limit(1).single(),
     supabase.from('cash_balance').select('*').limit(1).single(),
   ])
@@ -79,9 +79,10 @@ export async function GET(req: NextRequest) {
   // 次月末残高予測
   const projectedBalance = totalBankBalance - totalFixedCosts + totalExpectedIncome - totalExpectedExpense
 
-  // 商材評価額（仕入れ額ベース）
+  // 商材評価額（売価ベース、売価未設定は仕入れ額）
   const resaleValue = (resaleItems ?? []).reduce(
-    (s: number, item: { purchase_price: number; quantity: number }) => s + item.purchase_price * item.quantity,
+    (s: number, item: { purchase_price: number; sell_price: number | null; quantity: number }) =>
+      s + (item.sell_price ?? item.purchase_price) * item.quantity,
     0
   )
 
