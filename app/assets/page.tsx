@@ -49,7 +49,7 @@ type ResaleFormState = { name: string; quantity: string; purchase_price: string;
 const defaultResaleForm: ResaleFormState = { name: '', quantity: '1', purchase_price: '', sell_price: '', status: 'holding', platform: '', note: '' }
 
 export default function AssetsPage() {
-  const [tab, setTab] = useState<'resale' | 'nisa' | 'points' | 'income'>('resale')
+  const [tab, setTab] = useState<'points' | 'nisa' | 'resale' | 'income'>('points')
 
   // 商材
   const [resaleItems, setResaleItems] = useState<ResaleItem[]>([])
@@ -174,7 +174,7 @@ export default function AssetsPage() {
       <h1 className="text-xl font-bold">資産管理</h1>
 
       <div className="grid grid-cols-4 gap-1 bg-slate-100 rounded-xl p-1">
-        {([['resale','商材'],['nisa','NISA'],['points','ポイント'],['income','給料']] as const).map(([key, label]) => (
+        {([['points','ポイント'],['nisa','NISA'],['resale','商材'],['income','給料']] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${tab === key ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
             {label}

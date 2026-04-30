@@ -13,7 +13,7 @@ function currentMonth() {
 }
 
 export default function PlansPage() {
-  const [tab, setTab] = useState<'sub' | 'fixed' | 'planned' | 'wish' | 'big'>('sub')
+  const [tab, setTab] = useState<'planned' | 'wish' | 'big' | 'sub' | 'fixed'>('planned')
   const [cards, setCards] = useState<CreditCard[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
@@ -67,11 +67,11 @@ export default function PlansPage() {
   const totalPlanned = plannedExpenses.filter((p) => !p.is_done).reduce((sum, p) => sum + p.amount, 0)
 
   const tabs = [
-    { key: 'sub', label: 'サブスク' },
-    { key: 'fixed', label: '固定費' },
     { key: 'planned', label: '確定出費' },
     { key: 'wish', label: '欲しい' },
     { key: 'big', label: '大型' },
+    { key: 'sub', label: 'サブスク' },
+    { key: 'fixed', label: '固定費' },
   ] as const
 
   return (

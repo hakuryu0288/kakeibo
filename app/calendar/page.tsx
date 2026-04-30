@@ -28,6 +28,7 @@ export default function CalendarPage() {
   const [memos, setMemos] = useState<CalendarMemo[]>([])
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [memoInput, setMemoInput] = useState('')
+  const [amountInput, setAmountInput] = useState('')
   const [loading, setLoading] = useState(true)
 
   const fetchData = () => {
@@ -48,7 +49,6 @@ export default function CalendarPage() {
   const firstDay = getFirstDayOfWeek(month)
   const [year, mon] = month.split('-')
 
-  // 日付ごとの収支集計
   const byDate: Record<string, { income: number; expense: number }> = {}
   transactions.forEach((t) => {
     if (!byDate[t.date]) byDate[t.date] = { income: 0, expense: 0 }
@@ -56,7 +56,6 @@ export default function CalendarPage() {
     else byDate[t.date].expense += t.amount
   })
 
-  // 日付ごとのメモ
   const memoByDate: Record<string, CalendarMemo> = {}
   memos.forEach((m) => { memoByDate[m.date] = m })
 
@@ -65,14 +64,19 @@ export default function CalendarPage() {
 
   const saveMemo = async () => {
     if (!selectedDate) return
+    const amount = amountInput !== '' ? parseInt(amountInput) : 0
     await fetch('/api/calendar-memos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: selectedDate, memo: memoInput }),
+      body: JSON.stringify({ date: selectedDate, memo: memoInput || null, amount }),
     })
     setMemoInput('')
+    setAmountInput('')
     fetchData()
   }
+
+  const amountNum = amountInput !== '' ? parseInt(amountInput) : 0
+  const amountColor = amountNum > 0 ? 'text-green-600 border-green-300' : amountNum < 0 ? 'text-red-600 border-red-300' : 'border-slate-200'
 
   return (
     <div className="space-y-4">
@@ -98,16 +102,22 @@ export default function CalendarPage() {
             const day = i + 1
             const dateStr = `${month}-${String(day).padStart(2, '0')}`
             const data = byDate[dateStr]
-            const hasMemo = !!memoByDate[dateStr]
+            const memo = memoByDate[dateStr]
             const isSelected = selectedDate === dateStr
             const dow = (firstDay + i) % 7
             return (
-              <button key={day} onClick={() => { setSelectedDate(isSelected ? null : dateStr); setMemoInput(memoByDate[dateStr]?.memo ?? '') }}
+              <button key={day} onClick={() => { setSelectedDate(isSelected ? null : dateStr); setMemoInput(memoByDate[dateStr]?.memo ?? ''); setAmountInput(memoByDate[dateStr]?.amount ? String(memoByDate[dateStr].amount) : '') }}
                 className={`aspect-square flex flex-col items-center justify-center rounded-lg text-xs transition-colors ${isSelected ? 'bg-indigo-100 ring-2 ring-indigo-400' : 'hover:bg-slate-50'}`}>
                 <span className={`font-medium ${dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : 'text-slate-700'}`}>{day}</span>
                 {data?.expense ? <span className="text-red-400 text-[9px] leading-tight">-{Math.floor(data.expense / 1000)}k</span> : null}
                 {data?.income ? <span className="text-green-400 text-[9px] leading-tight">+{Math.floor(data.income / 1000)}k</span> : null}
-                {hasMemo && <span className="w-1 h-1 bg-indigo-400 rounded-full mt-0.5" />}
+                {memo?.memo ? (
+                  <span className="text-[8px] text-indigo-500 leading-tight max-w-full px-0.5 truncate">{memo.memo.slice(0, 4)}</span>
+                ) : memo?.amount ? (
+                  <span className={`text-[8px] leading-tight ${memo.amount > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {memo.amount > 0 ? '+' : ''}{Math.floor(Math.abs(memo.amount) / 1000)}k
+                  </span>
+                ) : null}
               </button>
             )
           })}
@@ -119,16 +129,32 @@ export default function CalendarPage() {
         <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
           <h2 className="text-sm font-semibold">{selectedDate.replace('-', '年').replace('-', '月')}日</h2>
 
-          {/* メモ */}
-          <div>
-            <label className="text-xs text-slate-500">メモ</label>
-            <div className="flex gap-2 mt-1">
+          {/* メモ・金額入力 */}
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs text-slate-500">メモ</label>
               <input type="text" value={memoInput} onChange={(e) => setMemoInput(e.target.value)}
-                placeholder="メモを入力" className="flex-1 border border-slate-200 rounded-lg p-2 text-sm" />
-              <button onClick={saveMemo} className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm">保存</button>
+                placeholder="メモを入力（任意）" className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" />
             </div>
-            {selectedMemo?.memo && <p className="text-xs text-slate-400 mt-1">現在: {selectedMemo.memo}</p>}
+            <div>
+              <label className="text-xs text-slate-500">金額メモ（＋収入 / −支出）</label>
+              <input type="number" value={amountInput} onChange={(e) => setAmountInput(e.target.value)}
+                placeholder="例: 5000 または -3000（任意）"
+                className={`w-full border rounded-lg p-2 text-sm mt-1 font-medium ${amountColor}`} />
+            </div>
+            <button onClick={saveMemo} className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
           </div>
+
+          {selectedMemo && (selectedMemo.memo || selectedMemo.amount !== 0) && (
+            <div className="text-xs text-slate-400 space-y-0.5">
+              {selectedMemo.memo && <p>メモ: {selectedMemo.memo}</p>}
+              {selectedMemo.amount !== 0 && (
+                <p className={selectedMemo.amount > 0 ? 'text-green-600' : 'text-red-600'}>
+                  金額メモ: {selectedMemo.amount > 0 ? '+' : ''}{yen(selectedMemo.amount)}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* 当日の取引 */}
           {selectedTxns.length === 0 ? (

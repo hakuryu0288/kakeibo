@@ -182,5 +182,6 @@ export type CalendarMemo = {
   id: string
   date: string
   memo: string | null
+  amount: number
   created_at: string
 }
