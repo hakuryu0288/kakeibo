@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Subscription, PlannedExpense, WishItem, BigExpense, CreditCard, FixedCost, BankAccount } from '@/lib/supabase'
+import { Subscription, PlannedExpense, WishItem, BigExpense, CreditCard, FixedCost, BankAccount, Transaction } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -12,6 +12,12 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function nextMonthOf(m: string) {
+  const d = new Date(`${m}-01`)
+  d.setMonth(d.getMonth() + 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export default function PlansPage() {
   const [tab, setTab] = useState<'planned' | 'wish' | 'big' | 'sub' | 'fixed'>('planned')
   const [cards, setCards] = useState<CreditCard[]>([])
@@ -19,10 +25,17 @@ export default function PlansPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpense[]>([])
+  const [nextMonthPlanned, setNextMonthPlanned] = useState<PlannedExpense[]>([])
   const [wishList, setWishList] = useState<WishItem[]>([])
   const [bigExpenses, setBigExpenses] = useState<BigExpense[]>([])
+  const [appliedSubIds, setAppliedSubIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+
   const month = currentMonth()
+  const nextMonth = nextMonthOf(month)
+  const [, mon] = month.split('-')
+  const [, nextMon] = nextMonth.split('-')
+  const todayDay = new Date().getDate()
 
   const [subForm, setSubForm] = useState({ name: '', amount: '', credit_card_id: '', billing_day: '1' })
   const [showSubForm, setShowSubForm] = useState(false)
@@ -42,21 +55,35 @@ export default function PlansPage() {
       fetch('/api/subscriptions').then((r) => r.json()),
       fetch('/api/fixed-costs').then((r) => r.json()),
       fetch(`/api/planned-expenses?month=${month}`).then((r) => r.json()),
+      fetch(`/api/planned-expenses?month=${nextMonth}`).then((r) => r.json()),
       fetch('/api/wish-list').then((r) => r.json()),
       fetch('/api/big-expenses').then((r) => r.json()),
-    ]).then(([c, a, s, f, p, w, b]) => {
+      fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
+    ]).then(([c, a, s, f, p, pn, w, b, txns]) => {
       setCards(Array.isArray(c) ? c : [])
       setAccounts(Array.isArray(a) ? a : [])
       setSubscriptions(Array.isArray(s) ? s : [])
       setFixedCosts(Array.isArray(f) ? f : [])
       setPlannedExpenses(Array.isArray(p) ? p : [])
+      setNextMonthPlanned(Array.isArray(pn) ? pn : [])
       setWishList(Array.isArray(w) ? w : [])
       setBigExpenses(Array.isArray(b) ? b : [])
+      const applied = new Set<string>(
+        (Array.isArray(txns) ? txns : [])
+          .filter((t: Transaction) => t.subscription_id)
+          .map((t: Transaction) => t.subscription_id as string)
+      )
+      setAppliedSubIds(applied)
       setLoading(false)
     })
   }
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => {
+    // サブスク自動記録を試みてからデータ取得
+    fetch('/api/subscriptions/auto-apply', { method: 'POST' })
+      .catch(() => {})
+      .finally(() => fetchAll())
+  }, [])
 
   const post = async (url: string, body: object) => { await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); fetchAll() }
   const patch = async (url: string, body: object) => { await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); fetchAll() }
@@ -65,6 +92,7 @@ export default function PlansPage() {
   const totalSubs = subscriptions.filter((s) => s.is_active).reduce((sum, s) => sum + s.amount, 0)
   const totalFixed = fixedCosts.filter((f) => f.is_active).reduce((sum, f) => sum + f.amount, 0)
   const totalPlanned = plannedExpenses.filter((p) => !p.is_done).reduce((sum, p) => sum + p.amount, 0)
+  const totalNextPlanned = nextMonthPlanned.filter((p) => !p.is_done).reduce((sum, p) => sum + p.amount, 0)
 
   const tabs = [
     { key: 'planned', label: '確定出費' },
@@ -78,7 +106,6 @@ export default function PlansPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-bold">計画・予定</h1>
 
-      {/* スクロール可能なタブ */}
       <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
         {tabs.map(({ key, label }) => (
           <button key={key} onClick={() => setTab(key)}
@@ -97,22 +124,39 @@ export default function PlansPage() {
                 <p className="text-xs text-indigo-600">月額サブスク合計</p>
                 <p className="text-xl font-bold text-indigo-700">{yen(totalSubs)}</p>
               </div>
-              {subscriptions.map((s) => (
-                <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
-                  <div>
-                    <p className="text-sm font-medium">{s.name}</p>
-                    <p className="text-xs text-slate-400">毎月{s.billing_day}日　{s.credit_cards?.name ?? 'カードなし'}</p>
+              <p className="text-xs text-slate-400 text-center">請求日が来ると自動でカード取引に追加されます</p>
+              {subscriptions.map((s) => {
+                const isPastDay = s.billing_day <= todayDay
+                const isApplied = appliedSubIds.has(s.id)
+                return (
+                  <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium">{s.name}</p>
+                      <p className="text-xs text-slate-400">毎月{s.billing_day}日　{s.credit_cards?.name ?? 'カードなし'}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold">{yen(s.amount)}</span>
+                      {/* 今月の記録状況バッジ */}
+                      {s.credit_card_id && (
+                        isPastDay ? (
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${isApplied ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                            {isApplied ? `${mon}月済` : '未記録'}
+                          </span>
+                        ) : (
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">
+                            {s.billing_day}日予定
+                          </span>
+                        )
+                      )}
+                      <button onClick={() => patch('/api/subscriptions', { id: s.id, is_active: !s.is_active })}
+                        className={`text-xs px-2 py-0.5 rounded-full ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                        {s.is_active ? 'ON' : 'OFF'}
+                      </button>
+                      <button onClick={() => del('/api/subscriptions', s.id, 'このサブスクを削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">{yen(s.amount)}</span>
-                    <button onClick={() => patch('/api/subscriptions', { id: s.id, is_active: !s.is_active })}
-                      className={`text-xs px-2 py-0.5 rounded-full ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
-                      {s.is_active ? 'ON' : 'OFF'}
-                    </button>
-                    <button onClick={() => del('/api/subscriptions', s.id, 'このサブスクを削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
               {showSubForm ? (
                 <form onSubmit={async (e) => { e.preventDefault(); await post('/api/subscriptions', { name: subForm.name, amount: parseInt(subForm.amount), credit_card_id: subForm.credit_card_id || null, billing_day: parseInt(subForm.billing_day) }); setSubForm({ name: '', amount: '', credit_card_id: '', billing_day: '1' }); setShowSubForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">サブスクを追加</h2>
@@ -187,10 +231,14 @@ export default function PlansPage() {
           {/* 確定出費 */}
           {tab === 'planned' && (
             <div className="space-y-3">
-              <div className="bg-red-50 rounded-xl p-3 text-center">
-                <p className="text-xs text-red-600">今月の確定出費合計</p>
-                <p className="text-xl font-bold text-red-700">{yen(totalPlanned)}</p>
+              {/* 今月 */}
+              <div className="bg-red-50 rounded-xl p-3 flex justify-between items-center">
+                <p className="text-xs text-red-600 font-medium">今月（{mon}月）の確定出費</p>
+                <p className="text-base font-bold text-red-700">{yen(totalPlanned)}</p>
               </div>
+              {plannedExpenses.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-2">今月の確定出費なし</p>
+              )}
               {plannedExpenses.map((p) => (
                 <div key={p.id} className={`bg-white rounded-xl p-3 shadow-sm flex justify-between items-center ${p.is_done ? 'opacity-50' : ''}`}>
                   <div>
@@ -207,6 +255,37 @@ export default function PlansPage() {
                   </div>
                 </div>
               ))}
+
+              {/* 来月 */}
+              <div className="flex items-center gap-2 pt-1">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-xs text-slate-400 font-medium whitespace-nowrap">来月（{nextMon}月）</span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+              <div className="bg-amber-50 rounded-xl p-3 flex justify-between items-center">
+                <p className="text-xs text-amber-600 font-medium">来月（{nextMon}月）の確定出費</p>
+                <p className="text-base font-bold text-amber-700">{yen(totalNextPlanned)}</p>
+              </div>
+              {nextMonthPlanned.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-2">来月の確定出費なし</p>
+              )}
+              {nextMonthPlanned.map((p) => (
+                <div key={p.id} className={`bg-white rounded-xl p-3 shadow-sm flex justify-between items-center border-l-2 border-amber-300 ${p.is_done ? 'opacity-50' : ''}`}>
+                  <div>
+                    <p className="text-sm font-medium">{p.name}</p>
+                    <p className="text-xs text-slate-400">{p.credit_cards?.name ?? 'カードなし'} · {nextMon}月</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold">{yen(p.amount)}</span>
+                    <button onClick={() => patch('/api/planned-expenses', { id: p.id, is_done: !p.is_done })}
+                      className={`text-xs px-2 py-0.5 rounded-full ${p.is_done ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {p.is_done ? '完了' : '未済'}
+                    </button>
+                    <button onClick={() => del('/api/planned-expenses', p.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
+                  </div>
+                </div>
+              ))}
+
               {showPlanForm ? (
                 <form onSubmit={async (e) => { e.preventDefault(); await post('/api/planned-expenses', { name: planForm.name, amount: parseInt(planForm.amount), credit_card_id: planForm.credit_card_id || null, month: planForm.month }); setPlanForm({ name: '', amount: '', credit_card_id: '', month }); setShowPlanForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">確定出費を追加</h2>

@@ -46,6 +46,7 @@ export type Transaction = {
   credit_card_id: string | null
   bank_account_id: string | null
   point_balance_id: string | null
+  subscription_id?: string | null
   memo: string | null
   created_at: string
   categories?: Category
