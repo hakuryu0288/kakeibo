@@ -26,7 +26,8 @@ export default function AccountsPage() {
   const [cards, setCards] = useState<CreditCard[]>([])
   const [cash, setCash] = useState<CashBalance | null>(null)
   const [cashMemos, setCashMemos] = useState<CashMemo[]>([])
-  const [currentMonthTxns, setCurrentMonthTxns] = useState<Transaction[]>([])
+  const [prevMonthTxns, setPrevMonthTxns] = useState<Transaction[]>([])
+  const [prevMonthOverrides, setPrevMonthOverrides] = useState<CardMonthlyOverride[]>([])
   const [cardTabTxns, setCardTabTxns] = useState<Transaction[]>([])
   const [cardOverrides, setCardOverrides] = useState<CardMonthlyOverride[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
@@ -47,24 +48,27 @@ export default function AccountsPage() {
   const [overrideInput, setOverrideInput] = useState('')
 
   const fetchAll = () => {
+    const prevMonth = shiftMonth(today, -1)
     Promise.all([
       fetch('/api/bank-accounts').then((r) => r.json()),
       fetch('/api/credit-cards').then((r) => r.json()),
       fetch('/api/cash').then((r) => r.json()),
       fetch('/api/cash-memos').then((r) => r.json()),
-      fetch(`/api/transactions?month=${today}`).then((r) => r.json()),
       fetch('/api/subscriptions').then((r) => r.json()),
       fetch('/api/fixed-costs').then((r) => r.json()),
       fetch(`/api/expected-income?month=${today}`).then((r) => r.json()),
-    ]).then(([b, c, ca, cm, txns, subs, fc, ei]) => {
+      fetch(`/api/transactions?month=${prevMonth}`).then((r) => r.json()),
+      fetch(`/api/card-monthly-overrides?month=${prevMonth}`).then((r) => r.json()),
+    ]).then(([b, c, ca, cm, subs, fc, ei, prevTxns, prevOverrides]) => {
       setAccounts(Array.isArray(b) ? b : [])
       setCards(Array.isArray(c) ? c : [])
       setCash(ca?.id ? ca : null)
       setCashMemos(Array.isArray(cm) ? cm : [])
-      setCurrentMonthTxns(Array.isArray(txns) ? txns.filter((t: Transaction) => t.type === 'expense') : [])
       setSubscriptions(Array.isArray(subs) ? subs : [])
       setFixedCosts(Array.isArray(fc) ? fc : [])
       setExpectedIncomes(Array.isArray(ei) ? ei : [])
+      setPrevMonthTxns(Array.isArray(prevTxns) ? prevTxns.filter((t: Transaction) => t.type === 'expense') : [])
+      setPrevMonthOverrides(Array.isArray(prevOverrides) ? prevOverrides : [])
       setLoading(false)
     })
   }
@@ -349,15 +353,25 @@ export default function AccountsPage() {
                 const todayDay = new Date().getDate()
                 return accounts.map((acc) => {
                   const cardsForAcc = cards.filter((c) => c.bank_account_id === acc.id)
-                  const cardIdsForAcc = new Set(cardsForAcc.map((c) => c.id))
 
                   const incomeForAcc = expectedIncomes
                     .filter((e) => e.bank_account_id === acc.id)
                     .reduce((s, e) => s + e.amount, 0)
 
-                  const cardCharge = currentMonthTxns
-                    .filter((t) => t.credit_card_id && cardIdsForAcc.has(t.credit_card_id))
-                    .reduce((s, t) => s + t.amount, 0)
+                  const cardCharge = (() => {
+                    let total = 0
+                    for (const card of cardsForAcc) {
+                      const override = prevMonthOverrides.find((o) => o.credit_card_id === card.id)
+                      if (override) {
+                        total += override.override_amount
+                      } else {
+                        total += prevMonthTxns
+                          .filter((t) => t.credit_card_id === card.id)
+                          .reduce((s, t) => s + t.amount, 0)
+                      }
+                    }
+                    return total
+                  })()
 
                   const fixedCharge = fixedCosts
                     .filter((f) => f.is_active && f.bank_account_id === acc.id && f.billing_day > todayDay)
@@ -386,7 +400,7 @@ export default function AccountsPage() {
                         )}
                         {cardCharge > 0 && (
                           <div className="flex justify-between text-xs text-slate-500">
-                            <span>💳 カード請求（今月実績）</span>
+                            <span>💳 カード請求（先月実績）</span>
                             <span className="text-red-500 font-medium">-{yen(cardCharge)}</span>
                           </div>
                         )}
