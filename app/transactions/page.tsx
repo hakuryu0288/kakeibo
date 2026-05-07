@@ -26,6 +26,8 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editAmount, setEditAmount] = useState('')
 
   const [form, setForm] = useState({
     date: today(),
@@ -95,6 +97,18 @@ export default function TransactionsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('この取引を削除しますか？')) return
     await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' })
+    fetchData()
+  }
+
+  const handleEditSave = async (id: string) => {
+    const amount = parseInt(editAmount)
+    if (isNaN(amount) || amount <= 0) return
+    await fetch('/api/transactions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, amount }),
+    })
+    setEditingId(null)
     fetchData()
   }
 
@@ -267,11 +281,30 @@ export default function TransactionsPage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                    {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
-                  </span>
-                  <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-red-400 text-lg leading-none">×</button>
+                <div className="flex items-center gap-1">
+                  {editingId === t.id ? (
+                    <>
+                      <input
+                        type="number"
+                        value={editAmount}
+                        onChange={(e) => setEditAmount(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleEditSave(t.id); if (e.key === 'Escape') setEditingId(null) }}
+                        className="w-24 border border-indigo-300 rounded-lg px-2 py-0.5 text-sm text-right"
+                        autoFocus
+                        min={1}
+                      />
+                      <button onClick={() => handleEditSave(t.id)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1">保存</button>
+                      <button onClick={() => setEditingId(null)} className="text-slate-300 hover:text-slate-500 text-lg leading-none">×</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                        {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                      </span>
+                      <button onClick={() => { setEditingId(t.id); setEditAmount(String(t.amount)) }} className="text-slate-300 hover:text-indigo-400 text-sm leading-none px-0.5">✏</button>
+                      <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-red-400 text-lg leading-none">×</button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

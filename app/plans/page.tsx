@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Subscription, PlannedExpense, WishItem, BigExpense, CreditCard, FixedCost, BankAccount, Transaction } from '@/lib/supabase'
+import { Subscription, PlannedExpense, WishItem, BigExpense, CreditCard, FixedCost, BankAccount, Transaction, Category } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -29,6 +29,7 @@ export default function PlansPage() {
   const [wishList, setWishList] = useState<WishItem[]>([])
   const [bigExpenses, setBigExpenses] = useState<BigExpense[]>([])
   const [appliedSubIds, setAppliedSubIds] = useState<Set<string>>(new Set())
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
 
   const month = currentMonth()
@@ -37,7 +38,7 @@ export default function PlansPage() {
   const [, nextMon] = nextMonth.split('-')
   const todayDay = new Date().getDate()
 
-  const [subForm, setSubForm] = useState({ name: '', amount: '', credit_card_id: '', billing_day: '1' })
+  const [subForm, setSubForm] = useState({ name: '', amount: '', credit_card_id: '', billing_day: '1', category_id: '' })
   const [showSubForm, setShowSubForm] = useState(false)
   const [fixedForm, setFixedForm] = useState({ name: '', amount: '', bank_account_id: '', billing_day: '27' })
   const [showFixedForm, setShowFixedForm] = useState(false)
@@ -59,7 +60,8 @@ export default function PlansPage() {
       fetch('/api/wish-list').then((r) => r.json()),
       fetch('/api/big-expenses').then((r) => r.json()),
       fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
-    ]).then(([c, a, s, f, p, pn, w, b, txns]) => {
+      fetch('/api/categories').then((r) => r.json()),
+    ]).then(([c, a, s, f, p, pn, w, b, txns, cats]) => {
       setCards(Array.isArray(c) ? c : [])
       setAccounts(Array.isArray(a) ? a : [])
       setSubscriptions(Array.isArray(s) ? s : [])
@@ -68,6 +70,7 @@ export default function PlansPage() {
       setNextMonthPlanned(Array.isArray(pn) ? pn : [])
       setWishList(Array.isArray(w) ? w : [])
       setBigExpenses(Array.isArray(b) ? b : [])
+      setCategories(Array.isArray(cats) ? cats : [])
       const applied = new Set<string>(
         (Array.isArray(txns) ? txns : [])
           .filter((t: Transaction) => t.subscription_id)
@@ -89,6 +92,7 @@ export default function PlansPage() {
   const patch = async (url: string, body: object) => { await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); fetchAll() }
   const del = async (url: string, id: string, msg: string) => { if (!confirm(msg)) return; await fetch(`${url}?id=${id}`, { method: 'DELETE' }); fetchAll() }
 
+  const expenseCategories = categories.filter((c) => c.type === 'expense')
   const totalSubs = subscriptions.filter((s) => s.is_active).reduce((sum, s) => sum + s.amount, 0)
   const totalFixed = fixedCosts.filter((f) => f.is_active).reduce((sum, f) => sum + f.amount, 0)
   const totalPlanned = plannedExpenses.filter((p) => !p.is_done).reduce((sum, p) => sum + p.amount, 0)
@@ -129,10 +133,18 @@ export default function PlansPage() {
                 const isPastDay = s.billing_day <= todayDay
                 const isApplied = appliedSubIds.has(s.id)
                 return (
-                  <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
+                  <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-start">
                     <div>
                       <p className="text-sm font-medium">{s.name}</p>
                       <p className="text-xs text-slate-400">毎月{s.billing_day}日　{s.credit_cards?.name ?? 'カードなし'}</p>
+                      <select
+                        value={s.category_id ?? ''}
+                        onChange={(e) => patch('/api/subscriptions', { id: s.id, category_id: e.target.value || null })}
+                        className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1"
+                      >
+                        <option value="">カテゴリなし</option>
+                        {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                      </select>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold">{yen(s.amount)}</span>
@@ -158,7 +170,7 @@ export default function PlansPage() {
                 )
               })}
               {showSubForm ? (
-                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/subscriptions', { name: subForm.name, amount: parseInt(subForm.amount), credit_card_id: subForm.credit_card_id || null, billing_day: parseInt(subForm.billing_day) }); setSubForm({ name: '', amount: '', credit_card_id: '', billing_day: '1' }); setShowSubForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/subscriptions', { name: subForm.name, amount: parseInt(subForm.amount), credit_card_id: subForm.credit_card_id || null, billing_day: parseInt(subForm.billing_day), category_id: subForm.category_id || null }); setSubForm({ name: '', amount: '', credit_card_id: '', billing_day: '1', category_id: '' }); setShowSubForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">サブスクを追加</h2>
                   <input type="text" placeholder="サービス名（例：Netflix）" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
                   <div className="grid grid-cols-2 gap-2">
@@ -168,6 +180,10 @@ export default function PlansPage() {
                   <select value={subForm.credit_card_id} onChange={(e) => setSubForm({ ...subForm, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
                     <option value="">クレカ未設定</option>
                     {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select value={subForm.category_id} onChange={(e) => setSubForm({ ...subForm, category_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
+                    <option value="">カテゴリなし</option>
+                    {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                   </select>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setShowSubForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
