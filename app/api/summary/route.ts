@@ -36,6 +36,8 @@ export async function GET(req: NextRequest) {
     { data: prevPlannedExpenses },
     { data: prevTransactions },
     { data: prevPointRedemptions },
+    { data: cardOverrides },
+    { data: prevCardOverrides },
   ] = await Promise.all([
     supabase.from('bank_accounts').select('*'),
     supabase.from('credit_cards').select('*'),
@@ -52,6 +54,8 @@ export async function GET(req: NextRequest) {
     supabase.from('planned_expenses').select('*').eq('month', prevMonth).eq('is_done', false),
     supabase.from('transactions').select('*').gte('date', `${prevMonth}-01`).lt('date', `${month}-01`),
     supabase.from('point_redemptions').select('*').eq('apply_month', prevMonth),
+    supabase.from('card_monthly_overrides').select('*').eq('month', month),
+    supabase.from('card_monthly_overrides').select('*').eq('month', prevMonth),
   ])
 
   // 銀行残高合計
@@ -65,18 +69,21 @@ export async function GET(req: NextRequest) {
   // 見込み給料
   const totalExpectedIncome = (expectedIncomes ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)
 
-  // 今月カード請求（カードごと） - サブスクは手動入力済みのため除外
+  // 今月カード請求（カードごと）- 手動上書きがあればそれを優先
   const cardCharges: Record<string, number> = {}
   for (const card of (creditCards ?? [])) {
-    const txnTotal = (transactions ?? [])
-      .filter((t: { type: string; credit_card_id: string }) => t.type === 'expense' && t.credit_card_id === card.id)
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0)
-
-    const pointTotal = (pointRedemptions ?? [])
-      .filter((p: { credit_card_id: string }) => p.credit_card_id === card.id)
-      .reduce((s: number, p: { amount: number }) => s + p.amount, 0)
-
-    cardCharges[card.id] = txnTotal - pointTotal
+    const override = (cardOverrides ?? []).find((o: { credit_card_id: string }) => o.credit_card_id === card.id)
+    if (override) {
+      cardCharges[card.id] = (override as { override_amount: number }).override_amount
+    } else {
+      const txnTotal = (transactions ?? [])
+        .filter((t: { type: string; credit_card_id: string }) => t.type === 'expense' && t.credit_card_id === card.id)
+        .reduce((s: number, t: { amount: number }) => s + t.amount, 0)
+      const pointTotal = (pointRedemptions ?? [])
+        .filter((p: { credit_card_id: string }) => p.credit_card_id === card.id)
+        .reduce((s: number, p: { amount: number }) => s + p.amount, 0)
+      cardCharges[card.id] = txnTotal - pointTotal
+    }
   }
   const totalCardCharges = Object.values(cardCharges).reduce((s, v) => s + v, 0)
 
@@ -91,16 +98,21 @@ export async function GET(req: NextRequest) {
   // 見込み支出 = 今月カード請求 + 未請求サブスク + 確定出費
   const totalExpectedExpense = totalCardCharges + pendingSubTotal + totalPlannedExpenses
 
-  // 先月カード請求（カードごと）
+  // 先月カード請求（カードごと）- 手動上書きがあればそれを優先
   const prevCardCharges: Record<string, number> = {}
   for (const card of (creditCards ?? [])) {
-    const txnTotal = (prevTransactions ?? [])
-      .filter((t: { type: string; credit_card_id: string }) => t.type === 'expense' && t.credit_card_id === card.id)
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0)
-    const pointTotal = (prevPointRedemptions ?? [])
-      .filter((p: { credit_card_id: string }) => p.credit_card_id === card.id)
-      .reduce((s: number, p: { amount: number }) => s + p.amount, 0)
-    prevCardCharges[card.id] = txnTotal - pointTotal
+    const prevOverride = (prevCardOverrides ?? []).find((o: { credit_card_id: string }) => o.credit_card_id === card.id)
+    if (prevOverride) {
+      prevCardCharges[card.id] = (prevOverride as { override_amount: number }).override_amount
+    } else {
+      const txnTotal = (prevTransactions ?? [])
+        .filter((t: { type: string; credit_card_id: string }) => t.type === 'expense' && t.credit_card_id === card.id)
+        .reduce((s: number, t: { amount: number }) => s + t.amount, 0)
+      const pointTotal = (prevPointRedemptions ?? [])
+        .filter((p: { credit_card_id: string }) => p.credit_card_id === card.id)
+        .reduce((s: number, p: { amount: number }) => s + p.amount, 0)
+      prevCardCharges[card.id] = txnTotal - pointTotal
+    }
   }
   const totalPrevCardCharges = Object.values(prevCardCharges).reduce((s, v) => s + v, 0)
   const totalPrevExpectedIncome = (prevExpectedIncomes ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)

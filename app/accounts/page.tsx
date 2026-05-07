@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, Subscription, FixedCost, ExpectedIncome } from '@/lib/supabase'
+import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, Subscription, FixedCost, ExpectedIncome, CardMonthlyOverride } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -13,23 +13,38 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function shiftMonth(month: string, delta: number): string {
+  const d = new Date(`${month}-01`)
+  d.setMonth(d.getMonth() + delta)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export default function AccountsPage() {
+  const today = currentMonth()
+
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
   const [cash, setCash] = useState<CashBalance | null>(null)
   const [cashMemos, setCashMemos] = useState<CashMemo[]>([])
-  const [cardTxns, setCardTxns] = useState<Transaction[]>([])
+  const [currentMonthTxns, setCurrentMonthTxns] = useState<Transaction[]>([])
+  const [cardTabTxns, setCardTabTxns] = useState<Transaction[]>([])
+  const [cardOverrides, setCardOverrides] = useState<CardMonthlyOverride[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [expectedIncomes, setExpectedIncomes] = useState<ExpectedIncome[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'card' | 'cash' | 'bank'>('card')
-  const month = currentMonth()
+
+  const [cardMonth, setCardMonth] = useState(today)
+  const [cardMonthYear, cardMonthMon] = cardMonth.split('-')
 
   const [bankForm, setBankForm] = useState({ id: '', name: '', balance: '', note: '' })
   const [showBankForm, setShowBankForm] = useState(false)
   const [cashAmount, setCashAmount] = useState('')
   const [cashMemo, setCashMemo] = useState('')
+
+  const [editingCardId, setEditingCardId] = useState<string | null>(null)
+  const [overrideInput, setOverrideInput] = useState('')
 
   const fetchAll = () => {
     Promise.all([
@@ -37,16 +52,16 @@ export default function AccountsPage() {
       fetch('/api/credit-cards').then((r) => r.json()),
       fetch('/api/cash').then((r) => r.json()),
       fetch('/api/cash-memos').then((r) => r.json()),
-      fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
+      fetch(`/api/transactions?month=${today}`).then((r) => r.json()),
       fetch('/api/subscriptions').then((r) => r.json()),
       fetch('/api/fixed-costs').then((r) => r.json()),
-      fetch(`/api/expected-income?month=${month}`).then((r) => r.json()),
+      fetch(`/api/expected-income?month=${today}`).then((r) => r.json()),
     ]).then(([b, c, ca, cm, txns, subs, fc, ei]) => {
       setAccounts(Array.isArray(b) ? b : [])
       setCards(Array.isArray(c) ? c : [])
       setCash(ca?.id ? ca : null)
       setCashMemos(Array.isArray(cm) ? cm : [])
-      setCardTxns(Array.isArray(txns) ? txns.filter((t: Transaction) => t.type === 'expense') : [])
+      setCurrentMonthTxns(Array.isArray(txns) ? txns.filter((t: Transaction) => t.type === 'expense') : [])
       setSubscriptions(Array.isArray(subs) ? subs : [])
       setFixedCosts(Array.isArray(fc) ? fc : [])
       setExpectedIncomes(Array.isArray(ei) ? ei : [])
@@ -54,7 +69,18 @@ export default function AccountsPage() {
     })
   }
 
+  const fetchCardTabData = () => {
+    Promise.all([
+      fetch(`/api/transactions?month=${cardMonth}`).then((r) => r.json()),
+      fetch(`/api/card-monthly-overrides?month=${cardMonth}`).then((r) => r.json()),
+    ]).then(([txns, overrides]) => {
+      setCardTabTxns(Array.isArray(txns) ? txns.filter((t: Transaction) => t.type === 'expense') : [])
+      setCardOverrides(Array.isArray(overrides) ? overrides : [])
+    })
+  }
+
   useEffect(() => { fetchAll() }, [])
+  useEffect(() => { fetchCardTabData() }, [cardMonth])
 
   const saveBankAccount = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -96,7 +122,29 @@ export default function AccountsPage() {
     fetchAll()
   }
 
-  const totalCardUsage = cardTxns.reduce((s, t) => t.credit_card_id ? s + t.amount : s, 0)
+  const saveOverride = async (cardId: string) => {
+    const amount = parseInt(overrideInput)
+    if (isNaN(amount)) return
+    await fetch('/api/card-monthly-overrides', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credit_card_id: cardId, month: cardMonth, override_amount: amount }),
+    })
+    setEditingCardId(null)
+    setOverrideInput('')
+    fetchCardTabData()
+  }
+
+  const deleteOverride = async (id: string) => {
+    await fetch(`/api/card-monthly-overrides?id=${id}`, { method: 'DELETE' })
+    fetchCardTabData()
+  }
+
+  const totalCardUsage = cards.reduce((sum, card) => {
+    const txnTotal = cardTabTxns.filter((t) => t.credit_card_id === card.id).reduce((s, t) => s + t.amount, 0)
+    const override = cardOverrides.find((o) => o.credit_card_id === card.id)
+    return sum + (override ? override.override_amount : txnTotal)
+  }, 0)
 
   return (
     <div className="space-y-4">
@@ -116,14 +164,35 @@ export default function AccountsPage() {
           {/* クレカタブ */}
           {tab === 'card' && (
             <div className="space-y-4">
+              {/* 月ナビゲーション */}
+              <div className="flex items-center justify-between bg-white rounded-xl px-4 py-3 shadow-sm">
+                <button
+                  onClick={() => setCardMonth((m) => shiftMonth(m, -1))}
+                  className="w-8 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-lg text-lg"
+                >‹</button>
+                <span className="text-sm font-medium text-slate-600">{cardMonthYear}年{cardMonthMon}月</span>
+                <button
+                  onClick={() => { const next = shiftMonth(cardMonth, 1); if (next <= today) setCardMonth(next) }}
+                  disabled={cardMonth >= today}
+                  className="w-8 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-lg text-lg disabled:opacity-30"
+                >›</button>
+              </div>
+
               <div className="bg-indigo-50 rounded-xl p-3 text-center">
-                <p className="text-xs text-indigo-600">今月のクレカ合計使用額</p>
+                <p className="text-xs text-indigo-600">
+                  {cardMonth === today ? '今月' : `${cardMonthMon}月`}のクレカ合計使用額
+                </p>
                 <p className="text-xl font-bold text-red-600">{yen(totalCardUsage)}</p>
               </div>
 
               {cards.map((card) => {
-                const txnsForCard = cardTxns.filter((t) => t.credit_card_id === card.id)
-                const usage = txnsForCard.reduce((s, t) => s + t.amount, 0)
+                const txnsForCard = cardTabTxns.filter((t) => t.credit_card_id === card.id)
+                const txnTotal = txnsForCard.reduce((s, t) => s + t.amount, 0)
+                const override = cardOverrides.find((o) => o.credit_card_id === card.id)
+                const displayAmount = override ? override.override_amount : txnTotal
+                const diff = override ? override.override_amount - txnTotal : 0
+                const isEditing = editingCardId === card.id
+
                 return (
                   <div key={card.id} className="bg-white rounded-xl shadow-sm overflow-hidden" style={{ borderLeft: `4px solid ${card.color}` }}>
                     <div className="p-4">
@@ -136,11 +205,15 @@ export default function AccountsPage() {
                           )}
                         </div>
                         <div className="text-right">
-                          <p className="text-xs text-slate-400">今月使用</p>
-                          <p className={`text-lg font-bold ${usage > 0 ? 'text-red-600' : 'text-slate-400'}`}>{yen(usage)}</p>
+                          <p className="text-xs text-slate-400">使用額</p>
+                          <p className={`text-lg font-bold ${displayAmount > 0 ? 'text-red-600' : 'text-slate-400'}`}>{yen(displayAmount)}</p>
+                          {override && (
+                            <p className="text-xs text-slate-400">履歴: {yen(txnTotal)}</p>
+                          )}
                         </div>
                       </div>
                     </div>
+
                     {txnsForCard.length > 0 ? (
                       <div className="divide-y divide-slate-100 border-t border-slate-100">
                         {txnsForCard.map((t) => (
@@ -157,8 +230,57 @@ export default function AccountsPage() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-slate-400 px-4 py-2 border-t border-slate-100">今月の取引なし</p>
+                      <p className="text-xs text-slate-400 px-4 py-2 border-t border-slate-100">この月の取引なし</p>
                     )}
+
+                    {/* 手動上書きエリア */}
+                    <div className="px-4 py-2 border-t border-slate-100 bg-slate-50">
+                      {isEditing ? (
+                        <div className="flex gap-2 items-center">
+                          <span className="text-xs text-slate-500 whitespace-nowrap">上書き額:</span>
+                          <input
+                            type="number"
+                            value={overrideInput}
+                            onChange={(e) => setOverrideInput(e.target.value)}
+                            className="flex-1 border border-slate-200 rounded-lg px-2 py-1 text-sm bg-white"
+                            autoFocus
+                            onKeyDown={(e) => { if (e.key === 'Enter') saveOverride(card.id) }}
+                          />
+                          <button
+                            onClick={() => saveOverride(card.id)}
+                            className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-semibold whitespace-nowrap"
+                          >保存</button>
+                          <button
+                            onClick={() => { setEditingCardId(null); setOverrideInput('') }}
+                            className="px-2 py-1 text-slate-400 hover:text-slate-600 text-xs"
+                          >×</button>
+                        </div>
+                      ) : override ? (
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400">手動上書き中</span>
+                            <span className={`text-xs font-medium ${diff > 0 ? 'text-red-500' : diff < 0 ? 'text-green-600' : 'text-slate-400'}`}>
+                              差異: {diff > 0 ? '+' : ''}{yen(diff)}
+                            </span>
+                          </div>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => { setEditingCardId(card.id); setOverrideInput(String(override.override_amount)) }}
+                              className="text-xs text-indigo-500 hover:underline"
+                            >変更</button>
+                            <button
+                              onClick={() => deleteOverride(override.id)}
+                              className="text-xs text-red-400 hover:underline"
+                            >解除</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setEditingCardId(card.id); setOverrideInput(String(txnTotal)) }}
+                          className="text-xs text-indigo-500 w-full py-0.5 text-center hover:bg-indigo-50 rounded"
+                        >✎ 使用額を手動上書き</button>
+                      )}
+                    </div>
                   </div>
                 )
               })}
@@ -229,17 +351,14 @@ export default function AccountsPage() {
                   const cardsForAcc = cards.filter((c) => c.bank_account_id === acc.id)
                   const cardIdsForAcc = new Set(cardsForAcc.map((c) => c.id))
 
-                  // 今月の見込み給料（この口座に入金予定）
                   const incomeForAcc = expectedIncomes
                     .filter((e) => e.bank_account_id === acc.id)
                     .reduce((s, e) => s + e.amount, 0)
 
-                  // 今月のカード決済合計
-                  const cardCharge = cardTxns
+                  const cardCharge = currentMonthTxns
                     .filter((t) => t.credit_card_id && cardIdsForAcc.has(t.credit_card_id))
                     .reduce((s, t) => s + t.amount, 0)
 
-                  // 固定費 — billing_day が今日より先のもののみ（済みは口座残高に反映済み）
                   const fixedCharge = fixedCosts
                     .filter((f) => f.is_active && f.bank_account_id === acc.id && f.billing_day > todayDay)
                     .reduce((s, f) => s + f.amount, 0)

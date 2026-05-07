@@ -191,6 +191,14 @@ export type CashMemo = {
   created_at: string
 }
 
+export type CardMonthlyOverride = {
+  id: string
+  credit_card_id: string
+  month: string
+  override_amount: number
+  created_at: string
+}
+
 export type CalendarMemo = {
   id: string
   date: string

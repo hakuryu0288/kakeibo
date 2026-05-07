@@ -12,6 +12,12 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function shiftMonth(month: string, delta: number): string {
+  const d = new Date(`${month}-01`)
+  d.setMonth(d.getMonth() + delta)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 type Summary = {
   totalBankBalance: number
   prevMonthProjectedBalance: number
@@ -39,13 +45,22 @@ type RecentTransaction = {
 }
 
 export default function DashboardPage() {
+  const today = currentMonth()
+  const [month, setMonth] = useState(today)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [recentTxns, setRecentTxns] = useState<RecentTransaction[]>([])
   const [loading, setLoading] = useState(true)
-  const month = currentMonth()
   const [year, mon] = month.split('-')
 
+  const goToPrevMonth = () => setMonth((m) => shiftMonth(m, -1))
+  const goToNextMonth = () => {
+    const next = shiftMonth(month, 1)
+    if (next <= today) setMonth(next)
+  }
+
   useEffect(() => {
+    setLoading(true)
+    setSummary(null)
     Promise.all([
       fetch(`/api/summary?month=${month}`).then((r) => r.json()),
       fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
@@ -54,20 +69,30 @@ export default function DashboardPage() {
       setRecentTxns(Array.isArray(txns) ? txns.slice(0, 5) : [])
       setLoading(false)
     })
-  }, [])
+  }, [month])
 
   if (loading) return <div className="text-center py-16 text-slate-400">読み込み中...</div>
   if (!summary) return null
 
   const balanceColor = summary.projectedBalance >= 0 ? 'text-indigo-700' : 'text-red-600'
+  const isPastMonth = month < today
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Kakeibo</h1>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-slate-500">{year}年{mon}月</span>
-          <Link href="/calendar" className="bg-slate-100 hover:bg-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 transition-colors">📅 カレンダー</Link>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={goToPrevMonth}
+            className="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-lg text-lg"
+          >‹</button>
+          <span className="text-sm text-slate-500 min-w-[72px] text-center">{year}年{mon}月</span>
+          <button
+            onClick={goToNextMonth}
+            disabled={month >= today}
+            className="w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-lg text-lg disabled:opacity-30"
+          >›</button>
+          <Link href="/calendar" className="bg-slate-100 hover:bg-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 transition-colors ml-1">📅 カレンダー</Link>
         </div>
       </div>
 
@@ -96,26 +121,30 @@ export default function DashboardPage() {
       </div>
 
       {/* 銀行口座 + 現金 */}
-      <div className="bg-white rounded-xl p-4 shadow-sm">
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-sm font-semibold text-slate-700">口座・現金</h2>
-          <Link href="/accounts" className="text-xs text-indigo-600">管理</Link>
-        </div>
-        {summary.bankAccounts.map((acc) => (
-          <div key={acc.id} className="flex justify-between items-center py-2 border-b border-slate-50">
-            <span className="text-sm">🏦 {acc.name}</span>
-            <span className="text-sm font-semibold">{yen(acc.balance)}</span>
+      {!isPastMonth && (
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-sm font-semibold text-slate-700">口座・現金</h2>
+            <Link href="/accounts" className="text-xs text-indigo-600">管理</Link>
           </div>
-        ))}
-        <div className="flex justify-between items-center py-2">
-          <span className="text-sm">💴 現金</span>
-          <span className="text-sm font-semibold">{yen(summary.cashAmount)}</span>
+          {summary.bankAccounts.map((acc) => (
+            <div key={acc.id} className="flex justify-between items-center py-2 border-b border-slate-50">
+              <span className="text-sm">🏦 {acc.name}</span>
+              <span className="text-sm font-semibold">{yen(acc.balance)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between items-center py-2">
+            <span className="text-sm">💴 現金</span>
+            <span className="text-sm font-semibold">{yen(summary.cashAmount)}</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 見込み残高カード */}
       <div className="bg-white rounded-xl p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-700 mb-3">今月の見込み計算</h2>
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">
+          {isPastMonth ? `${year}年${mon}月の見込み計算` : '今月の見込み計算'}
+        </h2>
         <div className="space-y-2 text-sm">
           <Row label="先月次月末残高予測" value={summary.prevMonthProjectedBalance} />
           <Row label="固定費（口座引き落とし）" value={-summary.totalFixedCosts} minus />
@@ -133,7 +162,9 @@ export default function DashboardPage() {
       {/* 最近の取引 */}
       <div className="bg-white rounded-xl p-4 shadow-sm">
         <div className="flex justify-between items-center mb-3">
-          <h2 className="text-sm font-semibold text-slate-700">最近の取引</h2>
+          <h2 className="text-sm font-semibold text-slate-700">
+            {isPastMonth ? `${mon}月の取引` : '最近の取引'}
+          </h2>
           <Link href="/transactions" className="text-xs text-indigo-600">すべて見る</Link>
         </div>
         {recentTxns.length === 0 ? (
@@ -158,12 +189,14 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <Link
-        href="/transactions"
-        className="block w-full bg-indigo-600 text-white text-center py-3 rounded-xl font-semibold shadow hover:bg-indigo-700 transition-colors"
-      >
-        ＋ 収支を入力する
-      </Link>
+      {!isPastMonth && (
+        <Link
+          href="/transactions"
+          className="block w-full bg-indigo-600 text-white text-center py-3 rounded-xl font-semibold shadow hover:bg-indigo-700 transition-colors"
+        >
+          ＋ 収支を入力する
+        </Link>
+      )}
     </div>
   )
 }
