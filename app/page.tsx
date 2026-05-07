@@ -14,6 +14,7 @@ function currentMonth() {
 
 type Summary = {
   totalBankBalance: number
+  prevMonthProjectedBalance: number
   totalFixedCosts: number
   totalExpectedIncome: number
   totalCardCharges: number
@@ -116,7 +117,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-700 mb-3">今月の見込み計算</h2>
         <div className="space-y-2 text-sm">
-          <Row label="口座残高合計" value={summary.totalBankBalance} />
+          <Row label="先月次月末残高予測" value={summary.prevMonthProjectedBalance} />
           <Row label="固定費（口座引き落とし）" value={-summary.totalFixedCosts} minus />
           <Row label="見込み給料" value={summary.totalExpectedIncome} plus />
           <Row label="カード請求済み" value={-summary.totalCardCharges} minus />

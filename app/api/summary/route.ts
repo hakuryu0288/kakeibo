@@ -7,8 +7,15 @@ function nextMonthStr(month: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
 
+function prevMonthStr(month: string) {
+  const d = new Date(`${month}-01`)
+  d.setMonth(d.getMonth() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export async function GET(req: NextRequest) {
   const month = new URL(req.url).searchParams.get('month') ?? currentMonth()
+  const prevMonth = prevMonthStr(month)
 
   const today = new Date()
   const todayDay = today.getDate()
@@ -25,6 +32,10 @@ export async function GET(req: NextRequest) {
     { data: resaleItems },
     { data: nisaData },
     { data: cashData },
+    { data: prevExpectedIncomes },
+    { data: prevPlannedExpenses },
+    { data: prevTransactions },
+    { data: prevPointRedemptions },
   ] = await Promise.all([
     supabase.from('bank_accounts').select('*'),
     supabase.from('credit_cards').select('*'),
@@ -37,6 +48,10 @@ export async function GET(req: NextRequest) {
     supabase.from('resale_items').select('*'),
     supabase.from('nisa_settings').select('*').limit(1).single(),
     supabase.from('cash_balance').select('*').limit(1).single(),
+    supabase.from('expected_income').select('*').eq('month', prevMonth),
+    supabase.from('planned_expenses').select('*').eq('month', prevMonth).eq('is_done', false),
+    supabase.from('transactions').select('*').gte('date', `${prevMonth}-01`).lt('date', `${month}-01`),
+    supabase.from('point_redemptions').select('*').eq('apply_month', prevMonth),
   ])
 
   // 銀行残高合計
@@ -76,8 +91,26 @@ export async function GET(req: NextRequest) {
   // 見込み支出 = 今月カード請求 + 未請求サブスク + 確定出費
   const totalExpectedExpense = totalCardCharges + pendingSubTotal + totalPlannedExpenses
 
-  // 次月末残高予測
-  const projectedBalance = totalBankBalance - totalFixedCosts + totalExpectedIncome - totalExpectedExpense
+  // 先月カード請求（カードごと）
+  const prevCardCharges: Record<string, number> = {}
+  for (const card of (creditCards ?? [])) {
+    const txnTotal = (prevTransactions ?? [])
+      .filter((t: { type: string; credit_card_id: string }) => t.type === 'expense' && t.credit_card_id === card.id)
+      .reduce((s: number, t: { amount: number }) => s + t.amount, 0)
+    const pointTotal = (prevPointRedemptions ?? [])
+      .filter((p: { credit_card_id: string }) => p.credit_card_id === card.id)
+      .reduce((s: number, p: { amount: number }) => s + p.amount, 0)
+    prevCardCharges[card.id] = txnTotal - pointTotal
+  }
+  const totalPrevCardCharges = Object.values(prevCardCharges).reduce((s, v) => s + v, 0)
+  const totalPrevExpectedIncome = (prevExpectedIncomes ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)
+  const totalPrevPlannedExpenses = (prevPlannedExpenses ?? []).reduce((s: number, p: { amount: number }) => s + p.amount, 0)
+
+  // 先月次月末残高予測（先月は終了済みなので固定費・サブスクのpending分は0）
+  const prevMonthProjectedBalance = totalBankBalance + totalPrevExpectedIncome - totalPrevCardCharges - totalPrevPlannedExpenses
+
+  // 次月末残高予測（先月の次月末残高予測を起点にする）
+  const projectedBalance = prevMonthProjectedBalance - totalFixedCosts + totalExpectedIncome - totalExpectedExpense
 
   // 商材評価額（売価ベース、売価未設定は仕入れ額）
   const resaleValue = (resaleItems ?? []).reduce(
@@ -94,6 +127,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     month,
     totalBankBalance,
+    prevMonthProjectedBalance,
     totalFixedCosts,
     totalExpectedIncome,
     totalCardCharges,
