@@ -37,7 +37,7 @@ export default function TransactionsPage() {
     credit_card_id: '',
     bank_account_id: '',
     point_balance_id: '',
-    payment: 'cash' as 'cash' | 'card' | 'bank' | 'points',
+    payment: 'card' as 'cash' | 'card' | 'bank' | 'points',
     memo: '',
   })
 
@@ -64,7 +64,7 @@ export default function TransactionsPage() {
   const filteredCategories = categories.filter((c) => c.type === form.type)
 
   const handleTypeChange = (type: 'income' | 'expense') => {
-    setForm({ ...form, type, category_id: '', credit_card_id: '', bank_account_id: '', point_balance_id: '', payment: 'cash' })
+    setForm({ ...form, type, category_id: '', credit_card_id: '', bank_account_id: '', point_balance_id: '', payment: type === 'expense' ? 'card' : 'cash' })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -88,7 +88,7 @@ export default function TransactionsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    setForm({ date: today(), amount: '', type: 'expense', category_id: '', credit_card_id: '', bank_account_id: '', point_balance_id: '', payment: 'cash', memo: '' })
+    setForm({ date: today(), amount: '', type: 'expense', category_id: '', credit_card_id: '', bank_account_id: '', point_balance_id: '', payment: 'card', memo: '' })
     setShowForm(false)
     setSubmitting(false)
     fetchData()
