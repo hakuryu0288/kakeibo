@@ -47,6 +47,15 @@ export default function AccountsPage() {
   const [editingCardId, setEditingCardId] = useState<string | null>(null)
   const [overrideInput, setOverrideInput] = useState('')
 
+  // クレカ取引金額インライン編集
+  const [editingTxnId, setEditingTxnId] = useState<string | null>(null)
+  const [txnAmountInput, setTxnAmountInput] = useState('')
+
+  // 現金タブ
+  const [cashMonth, setCashMonth] = useState(today)
+  const [cashTxns, setCashTxns] = useState<Transaction[]>([])
+  const [cashMonthYear, cashMonthMon] = cashMonth.split('-')
+
   const fetchAll = () => {
     const prevMonth = shiftMonth(today, -1)
     Promise.all([
@@ -83,8 +92,18 @@ export default function AccountsPage() {
     })
   }
 
+  const fetchCashTabData = () => {
+    fetch(`/api/transactions?month=${cashMonth}`).then((r) => r.json()).then((txns) => {
+      const all: Transaction[] = Array.isArray(txns) ? txns : []
+      setCashTxns(all.filter((t) =>
+        t.credit_card_id === null && t.bank_account_id === null && t.point_balance_id === null
+      ))
+    })
+  }
+
   useEffect(() => { fetchAll() }, [])
   useEffect(() => { fetchCardTabData() }, [cardMonth])
+  useEffect(() => { fetchCashTabData() }, [cashMonth])
 
   const saveBankAccount = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -124,6 +143,20 @@ export default function AccountsPage() {
   const deleteCashMemo = async (id: string) => {
     await fetch(`/api/cash-memos?id=${id}`, { method: 'DELETE' })
     fetchAll()
+  }
+
+  const updateTxnAmount = async (txnId: string) => {
+    const amount = parseInt(txnAmountInput)
+    if (isNaN(amount) || amount <= 0) return
+    await fetch('/api/transactions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: txnId, amount }),
+    })
+    setEditingTxnId(null)
+    setTxnAmountInput('')
+    fetchCardTabData()
+    fetchCashTabData()
   }
 
   const saveOverride = async (cardId: string) => {
@@ -221,15 +254,33 @@ export default function AccountsPage() {
                     {txnsForCard.length > 0 ? (
                       <div className="divide-y divide-slate-100 border-t border-slate-100">
                         {txnsForCard.map((t) => (
-                          <div key={t.id} className="flex justify-between items-center px-4 py-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-base">{t.categories?.icon ?? '📦'}</span>
-                              <div>
+                          <div key={t.id} className="flex justify-between items-center px-4 py-2 gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-base shrink-0">{t.categories?.icon ?? '📦'}</span>
+                              <div className="min-w-0">
                                 <p className="text-xs font-medium">{t.categories?.name ?? 'その他'}</p>
-                                <p className="text-xs text-slate-400">{t.date}{t.memo ? '　' + t.memo : ''}</p>
+                                <p className="text-xs text-slate-400 truncate">{t.date}{t.memo ? '　' + t.memo : ''}</p>
                               </div>
                             </div>
-                            <span className="text-sm font-bold text-red-600">-{yen(t.amount)}</span>
+                            {editingTxnId === t.id ? (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <input
+                                  type="number"
+                                  value={txnAmountInput}
+                                  onChange={(e) => setTxnAmountInput(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') updateTxnAmount(t.id); if (e.key === 'Escape') { setEditingTxnId(null) } }}
+                                  className="w-24 border border-indigo-300 rounded px-2 py-0.5 text-sm text-right bg-white"
+                                  autoFocus
+                                />
+                                <button onClick={() => updateTxnAmount(t.id)} className="text-xs text-indigo-600 font-semibold">保存</button>
+                                <button onClick={() => setEditingTxnId(null)} className="text-xs text-slate-400">×</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => { setEditingTxnId(t.id); setTxnAmountInput(String(t.amount)) }}
+                                className="text-sm font-bold text-red-600 shrink-0 hover:bg-red-50 rounded px-1"
+                              >-{yen(t.amount)}</button>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -332,6 +383,73 @@ export default function AccountsPage() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* 現金収支履歴 */}
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                  <h2 className="text-sm font-semibold text-slate-700">現金 収支履歴</h2>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setCashMonth((m) => shiftMonth(m, -1))}
+                      className="w-7 h-7 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded text-lg"
+                    >‹</button>
+                    <span className="text-xs text-slate-500 min-w-[60px] text-center">{cashMonthYear}年{cashMonthMon}月</span>
+                    <button
+                      onClick={() => { const next = shiftMonth(cashMonth, 1); if (next <= today) setCashMonth(next) }}
+                      disabled={cashMonth >= today}
+                      className="w-7 h-7 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded text-lg disabled:opacity-30"
+                    >›</button>
+                  </div>
+                </div>
+
+                {(() => {
+                  const cashIncome  = cashTxns.filter((t) => t.type === 'income')
+                  const cashExpense = cashTxns.filter((t) => t.type === 'expense')
+                  const totalIncome  = cashIncome.reduce((s, t) => s + t.amount, 0)
+                  const totalExpense = cashExpense.reduce((s, t) => s + t.amount, 0)
+
+                  if (cashTxns.length === 0) {
+                    return <p className="text-xs text-slate-400 text-center py-4">この月の現金取引なし</p>
+                  }
+
+                  return (
+                    <>
+                      <div className="flex divide-x divide-slate-100 bg-slate-50 text-center">
+                        <div className="flex-1 py-2">
+                          <p className="text-xs text-slate-400">収入</p>
+                          <p className="text-sm font-bold text-green-600">+{yen(totalIncome)}</p>
+                        </div>
+                        <div className="flex-1 py-2">
+                          <p className="text-xs text-slate-400">支出</p>
+                          <p className="text-sm font-bold text-red-500">-{yen(totalExpense)}</p>
+                        </div>
+                        <div className="flex-1 py-2">
+                          <p className="text-xs text-slate-400">収支</p>
+                          <p className={`text-sm font-bold ${totalIncome - totalExpense >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>
+                            {yen(totalIncome - totalExpense)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {cashTxns.map((t) => (
+                          <div key={t.id} className="flex justify-between items-center px-4 py-2.5 gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-base shrink-0">{t.categories?.icon ?? (t.type === 'income' ? '💰' : '💴')}</span>
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium">{t.categories?.name ?? 'その他'}</p>
+                                <p className="text-xs text-slate-400 truncate">{t.date}{t.memo ? '　' + t.memo : ''}</p>
+                              </div>
+                            </div>
+                            <span className={`text-sm font-bold shrink-0 ${t.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
+                              {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </div>
           )}
