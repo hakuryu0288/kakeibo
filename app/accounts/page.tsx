@@ -404,33 +404,12 @@ export default function AccountsPage() {
                 </div>
 
                 {(() => {
-                  const cashIncome  = cashTxns.filter((t) => t.type === 'income')
-                  const cashExpense = cashTxns.filter((t) => t.type === 'expense')
-                  const totalIncome  = cashIncome.reduce((s, t) => s + t.amount, 0)
-                  const totalExpense = cashExpense.reduce((s, t) => s + t.amount, 0)
-
                   if (cashTxns.length === 0) {
                     return <p className="text-xs text-slate-400 text-center py-4">この月の現金取引なし</p>
                   }
 
                   return (
                     <>
-                      <div className="flex divide-x divide-slate-100 bg-slate-50 text-center">
-                        <div className="flex-1 py-2">
-                          <p className="text-xs text-slate-400">収入</p>
-                          <p className="text-sm font-bold text-green-600">+{yen(totalIncome)}</p>
-                        </div>
-                        <div className="flex-1 py-2">
-                          <p className="text-xs text-slate-400">支出</p>
-                          <p className="text-sm font-bold text-red-500">-{yen(totalExpense)}</p>
-                        </div>
-                        <div className="flex-1 py-2">
-                          <p className="text-xs text-slate-400">収支</p>
-                          <p className={`text-sm font-bold ${totalIncome - totalExpense >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>
-                            {yen(totalIncome - totalExpense)}
-                          </p>
-                        </div>
-                      </div>
                       <div className="divide-y divide-slate-100">
                         {cashTxns.map((t) => (
                           <div key={t.id} className="flex justify-between items-center px-4 py-2.5 gap-2">
