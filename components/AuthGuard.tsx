@@ -11,7 +11,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    setAuthed(localStorage.getItem(AUTH_KEY) === '1')
+    const v = localStorage.getItem(AUTH_KEY)
+    setAuthed(v === '1' || v === 'demo')
   }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -55,6 +56,13 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
               ログイン
             </button>
           </form>
+          <button
+            type="button"
+            onClick={() => { localStorage.setItem(AUTH_KEY, 'demo'); window.location.reload() }}
+            className="w-full text-slate-400 text-xs py-1 hover:text-slate-600 transition-colors"
+          >
+            🎭 デモモードで見る
+          </button>
         </div>
       </div>
     )
