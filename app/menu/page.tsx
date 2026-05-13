@@ -1,4 +1,9 @@
+'use client'
+
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
+
+const AUTH_KEY = 'kakeibo_auth'
 
 const menuItems = [
   { href: '/transactions', icon: '💸', label: '収支一覧', desc: '収入・支出の入力と確認' },
@@ -10,6 +15,27 @@ const menuItems = [
 ]
 
 export default function MenuPage() {
+  const [isDemoMode, setIsDemoMode] = useState(false)
+
+  useEffect(() => {
+    setIsDemoMode(localStorage.getItem(AUTH_KEY) === 'demo')
+  }, [])
+
+  const enterDemo = () => {
+    localStorage.setItem(AUTH_KEY, 'demo')
+    window.location.reload()
+  }
+
+  const exitDemo = () => {
+    localStorage.removeItem(AUTH_KEY)
+    window.location.reload()
+  }
+
+  const logout = () => {
+    localStorage.removeItem(AUTH_KEY)
+    window.location.reload()
+  }
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">メニュー</h1>
@@ -25,6 +51,38 @@ export default function MenuPage() {
             <span className="ml-auto text-slate-300">›</span>
           </Link>
         ))}
+
+        {isDemoMode ? (
+          <button onClick={exitDemo}
+            className="flex items-center gap-4 bg-amber-50 border border-amber-200 rounded-xl p-4 w-full text-left hover:bg-amber-100 transition-colors">
+            <span className="text-2xl">🎭</span>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">デモモード終了</p>
+              <p className="text-xs text-amber-500">実データの表示に戻る</p>
+            </div>
+            <span className="ml-auto text-amber-300">›</span>
+          </button>
+        ) : (
+          <button onClick={enterDemo}
+            className="flex items-center gap-4 bg-white rounded-xl p-4 shadow-sm w-full text-left hover:bg-slate-50 transition-colors">
+            <span className="text-2xl">🎭</span>
+            <div>
+              <p className="text-sm font-semibold">デモモードで見る</p>
+              <p className="text-xs text-slate-400">ダミーデータで表示（SNS投稿用）</p>
+            </div>
+            <span className="ml-auto text-slate-300">›</span>
+          </button>
+        )}
+
+        <button onClick={logout}
+          className="flex items-center gap-4 bg-white rounded-xl p-4 shadow-sm w-full text-left hover:bg-red-50 transition-colors">
+          <span className="text-2xl">🔒</span>
+          <div>
+            <p className="text-sm font-semibold text-red-500">ログアウト</p>
+            <p className="text-xs text-slate-400">パスワード画面に戻る</p>
+          </div>
+          <span className="ml-auto text-slate-300">›</span>
+        </button>
       </div>
     </div>
   )
