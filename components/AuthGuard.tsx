@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 
 const AUTH_KEY = 'kakeibo_auth'
-const PASSWORD = '0288'
+const PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD ?? '0000'
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [authed, setAuthed] = useState<boolean | null>(null)
