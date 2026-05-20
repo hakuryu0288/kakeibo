@@ -49,6 +49,13 @@ export default function PlansPage() {
   const [bigForm, setBigForm] = useState({ name: '', amount: '', planned_date: '', note: '' })
   const [showBigForm, setShowBigForm] = useState(false)
 
+  // インライン編集状態
+  const [editPlanned, setEditPlanned] = useState<{ id: string; name: string; amount: string; credit_card_id: string } | null>(null)
+  const [editWish, setEditWish] = useState<{ id: string; name: string; price: string; note: string; priority: string } | null>(null)
+  const [editBig, setEditBig] = useState<{ id: string; name: string; amount: string; planned_date: string; note: string } | null>(null)
+  const [editSub, setEditSub] = useState<{ id: string; name: string; amount: string; billing_day: string; credit_card_id: string } | null>(null)
+  const [editFixed, setEditFixed] = useState<{ id: string; name: string; amount: string; billing_day: string; bank_account_id: string } | null>(null)
+
   const fetchAll = () => {
     Promise.all([
       fetch('/api/credit-cards').then((r) => r.json()),
@@ -82,7 +89,6 @@ export default function PlansPage() {
   }
 
   useEffect(() => {
-    // サブスク自動記録を試みてからデータ取得
     fetch('/api/subscriptions/auto-apply', { method: 'POST' })
       .catch(() => {})
       .finally(() => fetchAll())
@@ -95,8 +101,8 @@ export default function PlansPage() {
   const expenseCategories = categories.filter((c) => c.type === 'expense')
   const totalSubs = subscriptions.filter((s) => s.is_active).reduce((sum, s) => sum + s.amount, 0)
   const totalFixed = fixedCosts.filter((f) => f.is_active).reduce((sum, f) => sum + f.amount, 0)
-  const totalPlanned = plannedExpenses.filter((p) => !p.is_done).reduce((sum, p) => sum + p.amount, 0)
-  const totalNextPlanned = nextMonthPlanned.filter((p) => !p.is_done).reduce((sum, p) => sum + p.amount, 0)
+  const totalPlanned = plannedExpenses.reduce((sum, p) => sum + p.amount, 0)
+  const totalNextPlanned = nextMonthPlanned.reduce((sum, p) => sum + p.amount, 0)
 
   const tabs = [
     { key: 'planned', label: '確定出費' },
@@ -132,6 +138,28 @@ export default function PlansPage() {
               {subscriptions.map((s) => {
                 const isPastDay = s.billing_day <= todayDay
                 const isApplied = appliedSubIds.has(s.id)
+                if (editSub?.id === s.id) {
+                  return (
+                    <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
+                      <input type="text" value={editSub.name} onChange={(e) => setEditSub({ ...editSub, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="サービス名" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="number" value={editSub.amount} onChange={(e) => setEditSub({ ...editSub, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="月額（円）" />
+                        <input type="number" value={editSub.billing_day} min={1} max={31} onChange={(e) => setEditSub({ ...editSub, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="請求日" />
+                      </div>
+                      <select value={editSub.credit_card_id} onChange={(e) => setEditSub({ ...editSub, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
+                        <option value="">クレカ未設定</option>
+                        {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditSub(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                        <button onClick={async () => {
+                          await patch('/api/subscriptions', { id: editSub.id, name: editSub.name, amount: parseInt(editSub.amount), billing_day: parseInt(editSub.billing_day), credit_card_id: editSub.credit_card_id || null })
+                          setEditSub(null)
+                        }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
+                      </div>
+                    </div>
+                  )
+                }
                 return (
                   <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-start">
                     <div>
@@ -148,7 +176,6 @@ export default function PlansPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold">{yen(s.amount)}</span>
-                      {/* 今月の記録状況バッジ */}
                       {s.credit_card_id && (
                         isPastDay ? (
                           <span className={`text-xs px-1.5 py-0.5 rounded-full ${isApplied ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
@@ -164,6 +191,7 @@ export default function PlansPage() {
                         className={`text-xs px-2 py-0.5 rounded-full ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
                         {s.is_active ? 'ON' : 'OFF'}
                       </button>
+                      <button onClick={() => setEditSub({ id: s.id, name: s.name, amount: String(s.amount), billing_day: String(s.billing_day), credit_card_id: s.credit_card_id ?? '' })} className="text-slate-400 hover:text-indigo-500">✏️</button>
                       <button onClick={() => del('/api/subscriptions', s.id, 'このサブスクを削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
                     </div>
                   </div>
@@ -203,24 +231,49 @@ export default function PlansPage() {
                 <p className="text-xs text-orange-600">月額固定費合計（口座引き落とし）</p>
                 <p className="text-xl font-bold text-orange-700">{yen(totalFixed)}</p>
               </div>
-              {fixedCosts.map((f) => (
-                <div key={f.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
-                  <div>
-                    <p className="text-sm font-medium">{f.name}</p>
-                    <p className="text-xs text-slate-400">
-                      毎月{f.billing_day}日　{f.bank_accounts?.name ?? '口座未設定'}
-                    </p>
+              {fixedCosts.map((f) => {
+                if (editFixed?.id === f.id) {
+                  return (
+                    <div key={f.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
+                      <input type="text" value={editFixed.name} onChange={(e) => setEditFixed({ ...editFixed, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="number" value={editFixed.amount} onChange={(e) => setEditFixed({ ...editFixed, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
+                        <input type="number" value={editFixed.billing_day} min={1} max={31} onChange={(e) => setEditFixed({ ...editFixed, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="引き落とし日" />
+                      </div>
+                      <select value={editFixed.bank_account_id} onChange={(e) => setEditFixed({ ...editFixed, bank_account_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
+                        <option value="">口座未設定</option>
+                        {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditFixed(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                        <button onClick={async () => {
+                          await patch('/api/fixed-costs', { id: editFixed.id, name: editFixed.name, amount: parseInt(editFixed.amount), billing_day: parseInt(editFixed.billing_day), bank_account_id: editFixed.bank_account_id || null })
+                          setEditFixed(null)
+                        }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
+                      </div>
+                    </div>
+                  )
+                }
+                return (
+                  <div key={f.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium">{f.name}</p>
+                      <p className="text-xs text-slate-400">
+                        毎月{f.billing_day}日　{f.bank_accounts?.name ?? '口座未設定'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold">{yen(f.amount)}</span>
+                      <button onClick={() => patch('/api/fixed-costs', { id: f.id, is_active: !f.is_active })}
+                        className={`text-xs px-2 py-0.5 rounded-full ${f.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                        {f.is_active ? 'ON' : 'OFF'}
+                      </button>
+                      <button onClick={() => setEditFixed({ id: f.id, name: f.name, amount: String(f.amount), billing_day: String(f.billing_day), bank_account_id: f.bank_account_id ?? '' })} className="text-slate-400 hover:text-indigo-500">✏️</button>
+                      <button onClick={() => del('/api/fixed-costs', f.id, 'この固定費を削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">{yen(f.amount)}</span>
-                    <button onClick={() => patch('/api/fixed-costs', { id: f.id, is_active: !f.is_active })}
-                      className={`text-xs px-2 py-0.5 rounded-full ${f.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
-                      {f.is_active ? 'ON' : 'OFF'}
-                    </button>
-                    <button onClick={() => del('/api/fixed-costs', f.id, 'この固定費を削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
               {showFixedForm ? (
                 <form onSubmit={async (e) => { e.preventDefault(); await post('/api/fixed-costs', { name: fixedForm.name, amount: parseInt(fixedForm.amount), bank_account_id: fixedForm.bank_account_id || null, billing_day: parseInt(fixedForm.billing_day) }); setFixedForm({ name: '', amount: '', bank_account_id: '', billing_day: '27' }); setShowFixedForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">固定費を追加</h2>
@@ -247,7 +300,6 @@ export default function PlansPage() {
           {/* 確定出費 */}
           {tab === 'planned' && (
             <div className="space-y-3">
-              {/* 今月 */}
               <div className="bg-red-50 rounded-xl p-3 flex justify-between items-center">
                 <p className="text-xs text-red-600 font-medium">今月（{mon}月）の確定出費</p>
                 <p className="text-base font-bold text-red-700">{yen(totalPlanned)}</p>
@@ -255,22 +307,42 @@ export default function PlansPage() {
               {plannedExpenses.length === 0 && (
                 <p className="text-xs text-slate-400 text-center py-2">今月の確定出費なし</p>
               )}
-              {plannedExpenses.map((p) => (
-                <div key={p.id} className={`bg-white rounded-xl p-3 shadow-sm flex justify-between items-center ${p.is_done ? 'opacity-50' : ''}`}>
-                  <div>
-                    <p className="text-sm font-medium">{p.name}</p>
-                    <p className="text-xs text-slate-400">{p.credit_cards?.name ?? 'カードなし'}</p>
+              {plannedExpenses.map((p) => {
+                if (editPlanned?.id === p.id) {
+                  return (
+                    <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
+                      <input type="text" value={editPlanned.name} onChange={(e) => setEditPlanned({ ...editPlanned, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="number" value={editPlanned.amount} onChange={(e) => setEditPlanned({ ...editPlanned, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
+                        <select value={editPlanned.credit_card_id} onChange={(e) => setEditPlanned({ ...editPlanned, credit_card_id: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
+                          <option value="">クレカなし</option>
+                          {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditPlanned(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                        <button onClick={async () => {
+                          await patch('/api/planned-expenses', { id: editPlanned.id, name: editPlanned.name, amount: parseInt(editPlanned.amount), credit_card_id: editPlanned.credit_card_id || null })
+                          setEditPlanned(null)
+                        }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
+                      </div>
+                    </div>
+                  )
+                }
+                return (
+                  <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium">{p.name}</p>
+                      <p className="text-xs text-slate-400">{p.credit_cards?.name ?? 'カードなし'}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold">{yen(p.amount)}</span>
+                      <button onClick={() => setEditPlanned({ id: p.id, name: p.name, amount: String(p.amount), credit_card_id: p.credit_card_id ?? '' })} className="text-slate-400 hover:text-indigo-500">✏️</button>
+                      <button onClick={() => del('/api/planned-expenses', p.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">{yen(p.amount)}</span>
-                    <button onClick={() => patch('/api/planned-expenses', { id: p.id, is_done: !p.is_done })}
-                      className={`text-xs px-2 py-0.5 rounded-full ${p.is_done ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {p.is_done ? '完了' : '未済'}
-                    </button>
-                    <button onClick={() => del('/api/planned-expenses', p.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
 
               {/* 来月 */}
               <div className="flex items-center gap-2 pt-1">
@@ -285,22 +357,42 @@ export default function PlansPage() {
               {nextMonthPlanned.length === 0 && (
                 <p className="text-xs text-slate-400 text-center py-2">来月の確定出費なし</p>
               )}
-              {nextMonthPlanned.map((p) => (
-                <div key={p.id} className={`bg-white rounded-xl p-3 shadow-sm flex justify-between items-center border-l-2 border-amber-300 ${p.is_done ? 'opacity-50' : ''}`}>
-                  <div>
-                    <p className="text-sm font-medium">{p.name}</p>
-                    <p className="text-xs text-slate-400">{p.credit_cards?.name ?? 'カードなし'} · {nextMon}月</p>
+              {nextMonthPlanned.map((p) => {
+                if (editPlanned?.id === p.id) {
+                  return (
+                    <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm border-l-2 border-amber-300 space-y-2">
+                      <input type="text" value={editPlanned.name} onChange={(e) => setEditPlanned({ ...editPlanned, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="number" value={editPlanned.amount} onChange={(e) => setEditPlanned({ ...editPlanned, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
+                        <select value={editPlanned.credit_card_id} onChange={(e) => setEditPlanned({ ...editPlanned, credit_card_id: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
+                          <option value="">クレカなし</option>
+                          {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditPlanned(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                        <button onClick={async () => {
+                          await patch('/api/planned-expenses', { id: editPlanned.id, name: editPlanned.name, amount: parseInt(editPlanned.amount), credit_card_id: editPlanned.credit_card_id || null })
+                          setEditPlanned(null)
+                        }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
+                      </div>
+                    </div>
+                  )
+                }
+                return (
+                  <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center border-l-2 border-amber-300">
+                    <div>
+                      <p className="text-sm font-medium">{p.name}</p>
+                      <p className="text-xs text-slate-400">{p.credit_cards?.name ?? 'カードなし'} · {nextMon}月</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold">{yen(p.amount)}</span>
+                      <button onClick={() => setEditPlanned({ id: p.id, name: p.name, amount: String(p.amount), credit_card_id: p.credit_card_id ?? '' })} className="text-slate-400 hover:text-indigo-500">✏️</button>
+                      <button onClick={() => del('/api/planned-expenses', p.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">{yen(p.amount)}</span>
-                    <button onClick={() => patch('/api/planned-expenses', { id: p.id, is_done: !p.is_done })}
-                      className={`text-xs px-2 py-0.5 rounded-full ${p.is_done ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {p.is_done ? '完了' : '未済'}
-                    </button>
-                    <button onClick={() => del('/api/planned-expenses', p.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
 
               {showPlanForm ? (
                 <form onSubmit={async (e) => { e.preventDefault(); await post('/api/planned-expenses', { name: planForm.name, amount: parseInt(planForm.amount), credit_card_id: planForm.credit_card_id || null, month: planForm.month }); setPlanForm({ name: '', amount: '', credit_card_id: '', month }); setShowPlanForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
@@ -328,25 +420,48 @@ export default function PlansPage() {
           {/* 欲しいものリスト */}
           {tab === 'wish' && (
             <div className="space-y-3">
-              {wishList.map((w) => (
-                <div key={w.id} className={`bg-white rounded-xl p-3 shadow-sm flex justify-between items-start ${w.is_purchased ? 'opacity-50' : ''}`}>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-1">
-                      <p className="text-sm font-medium">{w.name}</p>
-                      {Array.from({ length: w.priority }).map((_, i) => <span key={i} className="text-yellow-400 text-xs">★</span>)}
+              {wishList.map((w) => {
+                if (editWish?.id === w.id) {
+                  return (
+                    <div key={w.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
+                      <input type="text" value={editWish.name} onChange={(e) => setEditWish({ ...editWish, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="商品名" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="number" value={editWish.price} onChange={(e) => setEditWish({ ...editWish, price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="価格（円）" />
+                        <select value={editWish.priority} onChange={(e) => setEditWish({ ...editWish, priority: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
+                          <option value="0">優先度なし</option>
+                          <option value="1">★ 低</option>
+                          <option value="2">★★ 中</option>
+                          <option value="3">★★★ 高</option>
+                        </select>
+                      </div>
+                      <input type="text" value={editWish.note} onChange={(e) => setEditWish({ ...editWish, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="メモ（任意）" />
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditWish(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                        <button onClick={async () => {
+                          await patch('/api/wish-list', { id: editWish.id, name: editWish.name, price: editWish.price ? parseInt(editWish.price) : null, priority: parseInt(editWish.priority), note: editWish.note || null })
+                          setEditWish(null)
+                        }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
+                      </div>
                     </div>
-                    {w.price && <p className="text-xs text-slate-500">{yen(w.price)}</p>}
-                    {w.note && <p className="text-xs text-slate-400">{w.note}</p>}
+                  )
+                }
+                return (
+                  <div key={w.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-1">
+                        <p className="text-sm font-medium">{w.name}</p>
+                        {Array.from({ length: w.priority }).map((_, i) => <span key={i} className="text-yellow-400 text-xs">★</span>)}
+                      </div>
+                      {w.price && <p className="text-xs text-slate-500">{yen(w.price)}</p>}
+                      {w.note && <p className="text-xs text-slate-400">{w.note}</p>}
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <button onClick={() => setEditWish({ id: w.id, name: w.name, price: w.price ? String(w.price) : '', note: w.note ?? '', priority: String(w.priority) })} className="text-slate-400 hover:text-indigo-500">✏️</button>
+                      <button onClick={() => del('/api/wish-list', w.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
+                    </div>
                   </div>
-                  <div className="flex gap-2 items-center">
-                    <button onClick={() => patch('/api/wish-list', { id: w.id, is_purchased: !w.is_purchased })}
-                      className={`text-xs px-2 py-0.5 rounded-full ${w.is_purchased ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {w.is_purchased ? '購入済' : '未購入'}
-                    </button>
-                    <button onClick={() => del('/api/wish-list', w.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
               {showWishForm ? (
                 <form onSubmit={async (e) => { e.preventDefault(); await post('/api/wish-list', { name: wishForm.name, price: wishForm.price ? parseInt(wishForm.price) : null, priority: parseInt(wishForm.priority), note: wishForm.note || null, url: wishForm.url || null }); setWishForm({ name: '', price: '', priority: '0', note: '', url: '' }); setShowWishForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">欲しいものを追加</h2>
@@ -375,23 +490,41 @@ export default function PlansPage() {
           {/* 大型出費 */}
           {tab === 'big' && (
             <div className="space-y-3">
-              {bigExpenses.map((b) => (
-                <div key={b.id} className={`bg-white rounded-xl p-3 shadow-sm flex justify-between items-start ${b.is_done ? 'opacity-50' : ''}`}>
-                  <div>
-                    <p className="text-sm font-medium">{b.name}</p>
-                    {b.planned_date && <p className="text-xs text-slate-400">予定日: {b.planned_date}</p>}
-                    {b.note && <p className="text-xs text-slate-400">{b.note}</p>}
+              {bigExpenses.map((b) => {
+                if (editBig?.id === b.id) {
+                  return (
+                    <div key={b.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
+                      <input type="text" value={editBig.name} onChange={(e) => setEditBig({ ...editBig, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="number" value={editBig.amount} onChange={(e) => setEditBig({ ...editBig, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
+                        <input type="date" value={editBig.planned_date} onChange={(e) => setEditBig({ ...editBig, planned_date: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
+                      </div>
+                      <input type="text" value={editBig.note} onChange={(e) => setEditBig({ ...editBig, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="メモ（任意）" />
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditBig(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                        <button onClick={async () => {
+                          await patch('/api/big-expenses', { id: editBig.id, name: editBig.name, amount: parseInt(editBig.amount), planned_date: editBig.planned_date || null, note: editBig.note || null })
+                          setEditBig(null)
+                        }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
+                      </div>
+                    </div>
+                  )
+                }
+                return (
+                  <div key={b.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-start">
+                    <div>
+                      <p className="text-sm font-medium">{b.name}</p>
+                      {b.planned_date && <p className="text-xs text-slate-400">予定日: {b.planned_date}</p>}
+                      {b.note && <p className="text-xs text-slate-400">{b.note}</p>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold">{yen(b.amount)}</span>
+                      <button onClick={() => setEditBig({ id: b.id, name: b.name, amount: String(b.amount), planned_date: b.planned_date ?? '', note: b.note ?? '' })} className="text-slate-400 hover:text-indigo-500">✏️</button>
+                      <button onClick={() => del('/api/big-expenses', b.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">{yen(b.amount)}</span>
-                    <button onClick={() => patch('/api/big-expenses', { id: b.id, is_done: !b.is_done })}
-                      className={`text-xs px-2 py-0.5 rounded-full ${b.is_done ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                      {b.is_done ? '完了' : '未済'}
-                    </button>
-                    <button onClick={() => del('/api/big-expenses', b.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
               {showBigForm ? (
                 <form onSubmit={async (e) => { e.preventDefault(); await post('/api/big-expenses', { name: bigForm.name, amount: parseInt(bigForm.amount), planned_date: bigForm.planned_date || null, note: bigForm.note || null }); setBigForm({ name: '', amount: '', planned_date: '', note: '' }); setShowBigForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">大型出費を追加</h2>

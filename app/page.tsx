@@ -106,7 +106,12 @@ export default function DashboardPage() {
       if (calcJustEval && calcResult !== null) {
         setCalcExpr(String(calcResult) + btn); setCalcResult(null); setCalcJustEval(false)
       } else {
-        setCalcExpr((p) => p + btn)
+        setCalcExpr((p) => {
+          if (!p) return p
+          const ops = ['+', '-', '×', '÷']
+          if (ops.includes(p.slice(-1))) return p.slice(0, -1) + btn
+          return p + btn
+        })
       }
     }
   }
