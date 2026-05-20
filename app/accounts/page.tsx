@@ -353,6 +353,12 @@ export default function AccountsPage() {
           {/* 現金タブ */}
           {tab === 'cash' && (
             <div className="space-y-3">
+              <Link
+                href="/transactions"
+                className="block w-full bg-indigo-600 text-white text-center py-3 rounded-xl font-semibold shadow hover:bg-indigo-700 transition-colors"
+              >
+                ＋ 収支を入力する
+              </Link>
               <div className="bg-white rounded-xl p-4 shadow-sm">
                 <p className="text-sm text-slate-500">現在の現金残高</p>
                 <p className="text-2xl font-bold text-slate-800 mt-1">{yen(cash?.amount ?? 0)}</p>

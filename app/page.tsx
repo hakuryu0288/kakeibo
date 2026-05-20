@@ -178,6 +178,15 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {!isPastMonth && (
+        <Link
+          href="/transactions"
+          className="block w-full bg-indigo-600 text-white text-center py-3 rounded-xl font-semibold shadow hover:bg-indigo-700 transition-colors"
+        >
+          ＋ 収支を入力する
+        </Link>
+      )}
+
       {/* 銀行口座 + 現金 */}
       {!isPastMonth && (
         <div className="bg-white rounded-xl p-4 shadow-sm">
