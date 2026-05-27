@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Transaction, Category, CreditCard } from '@/lib/supabase'
+import { Transaction, Category, CreditCard, ExpectedIncome } from '@/lib/supabase'
 
 function formatYen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -22,7 +22,7 @@ function getYearMonths(year: number): string[] {
   return months
 }
 
-type MonthSummary = { month: string; income: number; expense: number }
+type MonthSummary = { month: string; income: number; expense: number; txnIncome: number; salaryIncome: number }
 
 export default function ReportsPage() {
   const currentYear = new Date().getFullYear()
@@ -32,6 +32,7 @@ export default function ReportsPage() {
   const [monthlySummaries, setMonthlySummaries] = useState<MonthSummary[]>([])
   const [selectedMonth, setSelectedMonth] = useState('')
   const [allTxns, setAllTxns] = useState<Record<string, Transaction[]>>({})
+  const [allExpectedIncomes, setAllExpectedIncomes] = useState<Record<string, ExpectedIncome[]>>({})
   const [loading, setLoading] = useState(true)
   const [detailTab, setDetailTab] = useState<'category' | 'card'>('category')
 
@@ -44,19 +45,35 @@ export default function ReportsPage() {
       fetch('/api/categories').then((r) => r.json()),
       fetch('/api/credit-cards').then((r) => r.json()),
       ...months.map((m) => fetch(`/api/transactions?month=${m}`).then((r) => r.json())),
-    ]).then(([cats, cds, ...txnsByMonth]) => {
+      ...months.map((m) => fetch(`/api/expected-income?month=${m}`).then((r) => r.json())),
+    ]).then((results) => {
+      const cats = results[0]
+      const cds = results[1]
+      const txnsByMonth = results.slice(2, 2 + months.length)
+      const expectedByMonth = results.slice(2 + months.length)
+
       setCategories(Array.isArray(cats) ? cats : [])
       setCards(Array.isArray(cds) ? cds : [])
 
       const txnMap: Record<string, Transaction[]> = {}
-      months.forEach((m, i) => { txnMap[m] = Array.isArray(txnsByMonth[i]) ? txnsByMonth[i] : [] })
+      const expectedMap: Record<string, ExpectedIncome[]> = {}
+      months.forEach((m, i) => {
+        txnMap[m] = Array.isArray(txnsByMonth[i]) ? txnsByMonth[i] : []
+        expectedMap[m] = Array.isArray(expectedByMonth[i]) ? expectedByMonth[i] : []
+      })
       setAllTxns(txnMap)
+      setAllExpectedIncomes(expectedMap)
 
       const summaries: MonthSummary[] = months.map((month, i) => {
         const txns: Transaction[] = Array.isArray(txnsByMonth[i]) ? txnsByMonth[i] : []
+        const expected: ExpectedIncome[] = Array.isArray(expectedByMonth[i]) ? expectedByMonth[i] : []
+        const txnIncome = txns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+        const salaryIncome = expected.reduce((s, e) => s + e.amount, 0)
         return {
           month,
-          income: txns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0),
+          txnIncome,
+          salaryIncome,
+          income: txnIncome + salaryIncome,
           expense: txns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
         }
       })
@@ -67,9 +84,10 @@ export default function ReportsPage() {
   }, [months])
 
   const selectedTxns = allTxns[selectedMonth] ?? []
+  const selectedExpectedIncomes = allExpectedIncomes[selectedMonth] ?? []
 
   const selectedSummary = monthlySummaries.find((s) => s.month === selectedMonth) ?? {
-    income: 0, expense: 0, month: selectedMonth,
+    income: 0, expense: 0, month: selectedMonth, txnIncome: 0, salaryIncome: 0,
   }
 
   const categoryBreakdown = categories
@@ -92,6 +110,7 @@ export default function ReportsPage() {
   const yearTotal = {
     income: monthlySummaries.reduce((s, m) => s + m.income, 0),
     expense: monthlySummaries.reduce((s, m) => s + m.expense, 0),
+    salary: monthlySummaries.reduce((s, m) => s + m.salaryIncome, 0),
   }
 
   const maxExpense = Math.max(...monthlySummaries.map((s) => s.expense), 1)
@@ -154,7 +173,7 @@ export default function ReportsPage() {
           {/* 年間集計 */}
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-700 mb-3">{selectedYear}年　年間集計</h2>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 mb-3">
               <div className="text-center">
                 <p className="text-xs text-green-600">収入合計</p>
                 <p className="text-sm font-bold text-green-700">{formatYen(yearTotal.income)}</p>
@@ -170,9 +189,14 @@ export default function ReportsPage() {
                 </p>
               </div>
             </div>
+            {yearTotal.salary > 0 && (
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-xs text-slate-500 text-center">うち見込み給与：<span className="font-medium text-green-600">{formatYen(yearTotal.salary)}</span></p>
+              </div>
+            )}
           </div>
 
-          {/* 月次収支一覧（銀行残高推移の代わり） */}
+          {/* 月次収支一覧 */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100">
               <h2 className="text-sm font-semibold text-slate-700">月次収支一覧</h2>
@@ -223,6 +247,33 @@ export default function ReportsPage() {
                 </p>
               </div>
             </div>
+
+            {/* 給与・見込み収入の内訳 */}
+            {selectedExpectedIncomes.length > 0 && (
+              <div className="mb-4 p-3 bg-green-50 rounded-lg">
+                <p className="text-xs font-semibold text-green-700 mb-2">給与・見込み収入</p>
+                <div className="space-y-1.5">
+                  {selectedExpectedIncomes.map((e) => (
+                    <div key={e.id} className="flex justify-between items-center text-xs">
+                      <span className="text-slate-600">{e.description ?? '給与'}</span>
+                      <span className="font-medium text-green-700">{formatYen(e.amount)}</span>
+                    </div>
+                  ))}
+                  {selectedExpectedIncomes.length > 1 && (
+                    <div className="flex justify-between text-xs font-bold pt-1 border-t border-green-200">
+                      <span className="text-green-700">合計</span>
+                      <span className="text-green-700">{formatYen(selectedSummary.salaryIncome)}</span>
+                    </div>
+                  )}
+                </div>
+                {selectedSummary.txnIncome > 0 && (
+                  <div className="flex justify-between text-xs mt-2 pt-2 border-t border-green-200">
+                    <span className="text-slate-500">収入取引</span>
+                    <span className="text-green-600">{formatYen(selectedSummary.txnIncome)}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* カテゴリ別 / カード別 タブ */}
             <div className="flex gap-1 mb-3">
