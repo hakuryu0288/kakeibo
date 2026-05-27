@@ -134,6 +134,7 @@ export type PlannedExpense = {
   amount: number
   month: string
   credit_card_id: string | null
+  note: string | null
   is_done: boolean
   created_at: string
   credit_cards?: CreditCard
@@ -146,6 +147,7 @@ export type WishItem = {
   priority: number
   note: string | null
   url: string | null
+  planned_month: string | null
   is_purchased: boolean
   created_at: string
 }
