@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 const AUTH_KEY = 'kakeibo_auth'
 
@@ -15,11 +15,9 @@ const menuItems = [
 ]
 
 export default function MenuPage() {
-  const [isDemoMode, setIsDemoMode] = useState(false)
-
-  useEffect(() => {
-    setIsDemoMode(localStorage.getItem(AUTH_KEY) === 'demo')
-  }, [])
+  const [isDemoMode] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem(AUTH_KEY) === 'demo'
+  )
 
   const enterDemo = () => {
     localStorage.setItem(AUTH_KEY, 'demo')

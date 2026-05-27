@@ -77,11 +77,9 @@ export default function DashboardPage() {
   const [calcExpr, setCalcExpr] = useState('')
   const [calcResult, setCalcResult] = useState<number | null>(null)
   const [calcJustEval, setCalcJustEval] = useState(false)
-  const [scratchMemo, setScratchMemo] = useState('')
-
-  useEffect(() => {
-    setScratchMemo(localStorage.getItem('kakeibo-scratchpad') ?? '')
-  }, [])
+  const [scratchMemo, setScratchMemo] = useState(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('kakeibo-scratchpad') ?? '') : ''
+  )
 
   const goToPrevMonth = () => setMonth((m) => shiftMonth(m, -1))
   const goToNextMonth = () => {
@@ -117,6 +115,7 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setSummary(null)
     Promise.all([

@@ -92,6 +92,7 @@ export default function PlansPage() {
     fetch('/api/subscriptions/auto-apply', { method: 'POST' })
       .catch(() => {})
       .finally(() => fetchAll())
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const post = async (url: string, body: object) => { await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); fetchAll() }

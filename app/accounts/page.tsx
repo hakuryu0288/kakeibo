@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, Subscription, FixedCost, ExpectedIncome, CardMonthlyOverride } from '@/lib/supabase'
+import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, FixedCost, ExpectedIncome, CardMonthlyOverride } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -30,7 +30,6 @@ export default function AccountsPage() {
   const [prevMonthOverrides, setPrevMonthOverrides] = useState<CardMonthlyOverride[]>([])
   const [cardTabTxns, setCardTabTxns] = useState<Transaction[]>([])
   const [cardOverrides, setCardOverrides] = useState<CardMonthlyOverride[]>([])
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
   const [expectedIncomes, setExpectedIncomes] = useState<ExpectedIncome[]>([])
   const [loading, setLoading] = useState(true)
@@ -63,17 +62,15 @@ export default function AccountsPage() {
       fetch('/api/credit-cards').then((r) => r.json()),
       fetch('/api/cash').then((r) => r.json()),
       fetch('/api/cash-memos').then((r) => r.json()),
-      fetch('/api/subscriptions').then((r) => r.json()),
       fetch('/api/fixed-costs').then((r) => r.json()),
       fetch(`/api/expected-income?month=${today}`).then((r) => r.json()),
       fetch(`/api/transactions?month=${prevMonth}`).then((r) => r.json()),
       fetch(`/api/card-monthly-overrides?month=${prevMonth}`).then((r) => r.json()),
-    ]).then(([b, c, ca, cm, subs, fc, ei, prevTxns, prevOverrides]) => {
+    ]).then(([b, c, ca, cm, fc, ei, prevTxns, prevOverrides]) => {
       setAccounts(Array.isArray(b) ? b : [])
       setCards(Array.isArray(c) ? c : [])
       setCash(ca?.id ? ca : null)
       setCashMemos(Array.isArray(cm) ? cm : [])
-      setSubscriptions(Array.isArray(subs) ? subs : [])
       setFixedCosts(Array.isArray(fc) ? fc : [])
       setExpectedIncomes(Array.isArray(ei) ? ei : [])
       setPrevMonthTxns(Array.isArray(prevTxns) ? prevTxns.filter((t: Transaction) => t.type === 'expense') : [])
@@ -101,8 +98,11 @@ export default function AccountsPage() {
     })
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchAll() }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchCardTabData() }, [cardMonth])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchCashTabData() }, [cashMonth])
 
   const saveBankAccount = async (e: React.FormEvent) => {
@@ -453,7 +453,6 @@ export default function AccountsPage() {
               )}
 
               {(() => {
-                const todayDay = new Date().getDate()
                 return accounts.map((acc) => {
                   const cardsForAcc = cards.filter((c) => c.bank_account_id === acc.id)
 
@@ -477,7 +476,7 @@ export default function AccountsPage() {
                   })()
 
                   const fixedCharge = fixedCosts
-                    .filter((f) => f.is_active && f.bank_account_id === acc.id && f.billing_day > todayDay)
+                    .filter((f) => f.is_active && f.bank_account_id === acc.id)
                     .reduce((s, f) => s + f.amount, 0)
 
                   const totalDeductions = cardCharge + fixedCharge

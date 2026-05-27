@@ -29,20 +29,18 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [memoInput, setMemoInput] = useState('')
   const [amountInput, setAmountInput] = useState('')
-  const [loading, setLoading] = useState(true)
 
   const fetchData = () => {
-    setLoading(true)
     Promise.all([
       fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
       fetch(`/api/calendar-memos?month=${month}`).then((r) => r.json()),
     ]).then(([txns, mms]) => {
       setTransactions(Array.isArray(txns) ? txns : [])
       setMemos(Array.isArray(mms) ? mms : [])
-      setLoading(false)
     })
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [month])
 
   const days = getDaysInMonth(month)

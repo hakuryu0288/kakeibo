@@ -59,6 +59,7 @@ export default function TransactionsPage() {
     })
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [month])
 
   const filteredCategories = categories.filter((c) => c.type === form.type)

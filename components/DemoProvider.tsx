@@ -9,12 +9,12 @@ const DemoContext = createContext(false)
 export const useDemoMode = () => useContext(DemoContext)
 
 export default function DemoProvider({ children }: { children: React.ReactNode }) {
-  const [isDemoMode, setIsDemoMode] = useState(false)
+  const [isDemoMode] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem(AUTH_KEY) === 'demo'
+  )
 
   useEffect(() => {
-    const demo = localStorage.getItem(AUTH_KEY) === 'demo'
-    setIsDemoMode(demo)
-    if (!demo) return
+    if (!isDemoMode) return
 
     const orig = window.fetch
     window.fetch = async (input, init) => {
@@ -49,7 +49,7 @@ export default function DemoProvider({ children }: { children: React.ReactNode }
     return () => {
       window.fetch = orig
     }
-  }, [])
+  }, [isDemoMode])
 
   function exitDemo() {
     localStorage.removeItem(AUTH_KEY)

@@ -152,6 +152,7 @@ export default function InvestmentsPage() {
     setLoading(false)
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { fetchInvestments() }, [])
 
   const totalMarketValue = investments.reduce((s, i) => s + (i.marketValue ?? 0), 0)

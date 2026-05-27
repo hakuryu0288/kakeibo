@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full bg-slate-50 text-slate-900">
         <DemoProvider>
           <AuthGuard>
-            <main className="max-w-lg mx-auto px-4 pt-4 pb-2">{children}</main>
+            <main className="max-w-lg mx-auto px-4 pt-4 pb-20">{children}</main>
             <BottomNav />
           </AuthGuard>
         </DemoProvider>

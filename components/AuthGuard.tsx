@@ -6,13 +6,23 @@ const AUTH_KEY = 'kakeibo_auth'
 const PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD ?? '0000'
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
-  const [authed, setAuthed] = useState<boolean | null>(null)
+  const [authed, setAuthed] = useState<boolean | null>(() => {
+    if (typeof window === 'undefined') return null
+    const v = localStorage.getItem(AUTH_KEY)
+    return v === '1' || v === 'demo'
+  })
   const [input, setInput] = useState('')
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    const v = localStorage.getItem(AUTH_KEY)
-    setAuthed(v === '1' || v === 'demo')
+    const handler = (e: WheelEvent) => {
+      const target = e.target as HTMLInputElement
+      if (target.tagName === 'INPUT' && target.type === 'number') {
+        target.blur()
+      }
+    }
+    window.addEventListener('wheel', handler)
+    return () => window.removeEventListener('wheel', handler)
   }, [])
 
   const handleSubmit = (e: React.FormEvent) => {

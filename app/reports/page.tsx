@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Transaction, Category } from '@/lib/supabase'
 
 function formatYen(n: number) {
@@ -31,7 +31,7 @@ export default function ReportsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
 
-  const months = getMonths(6)
+  const months = useMemo(() => getMonths(6), [])
 
   useEffect(() => {
     Promise.all([
@@ -56,7 +56,7 @@ export default function ReportsPage() {
       setTransactions(currentTxns)
       setLoading(false)
     })
-  }, [])
+  }, [months])
 
   const handleMonthChange = async (month: string) => {
     setSelectedMonth(month)
