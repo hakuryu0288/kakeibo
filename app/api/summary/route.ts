@@ -13,9 +13,16 @@ function prevMonthStr(month: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function nextMonthOnlyStr(month: string) {
+  const d = new Date(`${month}-01`)
+  d.setMonth(d.getMonth() + 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export async function GET(req: NextRequest) {
   const month = new URL(req.url).searchParams.get('month') ?? currentMonth()
   const prevMonth = prevMonthStr(month)
+  const nextMonth = nextMonthOnlyStr(month)
 
   const today = new Date()
   const todayDay = today.getDate()
@@ -38,6 +45,7 @@ export async function GET(req: NextRequest) {
     { data: prevPointRedemptions },
     { data: cardOverrides },
     { data: prevCardOverrides },
+    { data: nextExpectedIncomes },
   ] = await Promise.all([
     supabase.from('bank_accounts').select('*'),
     supabase.from('credit_cards').select('*'),
@@ -56,6 +64,7 @@ export async function GET(req: NextRequest) {
     supabase.from('point_redemptions').select('*').eq('apply_month', prevMonth),
     supabase.from('card_monthly_overrides').select('*').eq('month', month),
     supabase.from('card_monthly_overrides').select('*').eq('month', prevMonth),
+    supabase.from('expected_income').select('*').eq('month', nextMonth),
   ])
 
   // 銀行残高合計
@@ -114,12 +123,13 @@ export async function GET(req: NextRequest) {
     }
   }
   const totalPrevCardCharges = Object.values(prevCardCharges).reduce((s, v) => s + v, 0)
-  const totalPrevExpectedIncome = (prevExpectedIncomes ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)
-  const totalPrevPlannedExpenses = (prevPlannedExpenses ?? []).reduce((s: number, p: { amount: number }) => s + p.amount, 0)
+  const totalNextExpectedIncome = (nextExpectedIncomes ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)
 
-  // 今月末残高予測（現在の銀行残高を起点に今月の収支を加減）
-  // 先月カード代（今月引き落とし）と今月カード利用額（来月引き落とし）の両方を考慮
-  const projectedBalance = totalBankBalance - totalPrevCardCharges - totalFixedCosts + totalExpectedIncome - totalExpectedExpense
+  // 今月末残高 = 現在残高 + 今月給料 - 先月カード引き落とし - 固定費
+  const currentMonthBalance = totalBankBalance + totalExpectedIncome - totalPrevCardCharges - totalFixedCosts
+
+  // 次月末残高予測 = 今月末残高 + 次月給料 - 今月カード利用額 - サブスク - 確定出費
+  const projectedBalance = currentMonthBalance + totalNextExpectedIncome - totalExpectedExpense
 
   // 商材評価額（売価ベース、売価未設定は仕入れ額）
   const resaleValue = (resaleItems ?? []).reduce(
@@ -139,6 +149,8 @@ export async function GET(req: NextRequest) {
     totalFixedCosts,
     totalExpectedIncome,
     totalPrevCardCharges,
+    currentMonthBalance,
+    totalNextExpectedIncome,
     totalCardCharges,
     pendingSubTotal,
     totalPlannedExpenses,

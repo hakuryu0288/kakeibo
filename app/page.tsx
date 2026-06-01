@@ -45,6 +45,8 @@ type Summary = {
   totalPrevCardCharges: number
   totalFixedCosts: number
   totalExpectedIncome: number
+  currentMonthBalance: number
+  totalNextExpectedIncome: number
   totalCardCharges: number
   pendingSubTotal: number
   totalPlannedExpenses: number
@@ -131,6 +133,7 @@ export default function DashboardPage() {
   if (loading) return <div className="text-center py-16 text-slate-400">読み込み中...</div>
   if (!summary) return null
 
+  const currentMonthColor = summary.currentMonthBalance >= 0 ? 'text-emerald-700' : 'text-red-600'
   const balanceColor = summary.projectedBalance >= 0 ? 'text-indigo-700' : 'text-red-600'
   const isPastMonth = month < today
 
@@ -206,19 +209,31 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 見込み残高カード */}
+      {/* 今月末残高カード */}
       <div className="bg-white rounded-xl p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-700 mb-3">
-          {isPastMonth ? `${year}年${mon}月の見込み計算` : '今月の見込み計算'}
+          {isPastMonth ? `${year}年${mon}月末残高` : '今月末残高'}
         </h2>
         <div className="space-y-2 text-sm">
           <Row label="現在の銀行残高" value={summary.totalBankBalance} />
+          <Row label="見込み給料" value={summary.totalExpectedIncome} plus />
           <Row label="先月カード引き落とし" value={-summary.totalPrevCardCharges} minus />
           <Row label="固定費（口座引き落とし）" value={-summary.totalFixedCosts} minus />
-          <Row label="見込み給料" value={summary.totalExpectedIncome} plus />
+          <div className="pt-2 border-t border-slate-200 flex justify-between font-bold">
+            <span>今月末残高</span>
+            <span className={currentMonthColor}>{yen(summary.currentMonthBalance)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 次月末残高予測カード */}
+      <div className="bg-white rounded-xl p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">次月末残高予測</h2>
+        <div className="space-y-2 text-sm">
           <Row label="今月カード利用額" value={-summary.totalCardCharges} minus />
           <Row label="未請求サブスク" value={-summary.pendingSubTotal} minus />
           <Row label="確定出費" value={-summary.totalPlannedExpenses} minus />
+          <Row label="次月の見込み給料" value={summary.totalNextExpectedIncome} plus />
           <div className="pt-2 border-t border-slate-200 flex justify-between font-bold">
             <span>次月末残高予測</span>
             <span className={balanceColor}>{yen(summary.projectedBalance)}</span>
