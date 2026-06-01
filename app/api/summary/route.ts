@@ -118,7 +118,8 @@ export async function GET(req: NextRequest) {
   const totalPrevPlannedExpenses = (prevPlannedExpenses ?? []).reduce((s: number, p: { amount: number }) => s + p.amount, 0)
 
   // 今月末残高予測（現在の銀行残高を起点に今月の収支を加減）
-  const projectedBalance = totalBankBalance - totalFixedCosts + totalExpectedIncome - totalExpectedExpense
+  // 先月カード代（今月引き落とし）と今月カード利用額（来月引き落とし）の両方を考慮
+  const projectedBalance = totalBankBalance - totalPrevCardCharges - totalFixedCosts + totalExpectedIncome - totalExpectedExpense
 
   // 商材評価額（売価ベース、売価未設定は仕入れ額）
   const resaleValue = (resaleItems ?? []).reduce(
@@ -137,6 +138,7 @@ export async function GET(req: NextRequest) {
     totalBankBalance,
     totalFixedCosts,
     totalExpectedIncome,
+    totalPrevCardCharges,
     totalCardCharges,
     pendingSubTotal,
     totalPlannedExpenses,

@@ -42,6 +42,7 @@ function evalCalc(expr: string): number {
 
 type Summary = {
   totalBankBalance: number
+  totalPrevCardCharges: number
   totalFixedCosts: number
   totalExpectedIncome: number
   totalCardCharges: number
@@ -212,9 +213,10 @@ export default function DashboardPage() {
         </h2>
         <div className="space-y-2 text-sm">
           <Row label="現在の銀行残高" value={summary.totalBankBalance} />
+          <Row label="先月カード引き落とし" value={-summary.totalPrevCardCharges} minus />
           <Row label="固定費（口座引き落とし）" value={-summary.totalFixedCosts} minus />
           <Row label="見込み給料" value={summary.totalExpectedIncome} plus />
-          <Row label="カード請求済み" value={-summary.totalCardCharges} minus />
+          <Row label="今月カード利用額" value={-summary.totalCardCharges} minus />
           <Row label="未請求サブスク" value={-summary.pendingSubTotal} minus />
           <Row label="確定出費" value={-summary.totalPlannedExpenses} minus />
           <div className="pt-2 border-t border-slate-200 flex justify-between font-bold">
