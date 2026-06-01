@@ -42,7 +42,6 @@ function evalCalc(expr: string): number {
 
 type Summary = {
   totalBankBalance: number
-  prevMonthProjectedBalance: number
   totalFixedCosts: number
   totalExpectedIncome: number
   totalCardCharges: number
@@ -212,7 +211,7 @@ export default function DashboardPage() {
           {isPastMonth ? `${year}年${mon}月の見込み計算` : '今月の見込み計算'}
         </h2>
         <div className="space-y-2 text-sm">
-          <Row label="先月次月末残高予測" value={summary.prevMonthProjectedBalance} />
+          <Row label="現在の銀行残高" value={summary.totalBankBalance} />
           <Row label="固定費（口座引き落とし）" value={-summary.totalFixedCosts} minus />
           <Row label="見込み給料" value={summary.totalExpectedIncome} plus />
           <Row label="カード請求済み" value={-summary.totalCardCharges} minus />
