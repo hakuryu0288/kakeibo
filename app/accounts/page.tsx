@@ -429,27 +429,6 @@ export default function AccountsPage() {
           {/* 給料タブ */}
           {tab === 'income' && (
             <div className="space-y-3">
-              {incomes.map((inc) => {
-                const accName = inc.bank_account_id
-                  ? accounts.find((a) => a.id === inc.bank_account_id)?.name
-                  : null
-                return (
-                  <div key={inc.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-medium">{inc.month.replace('-', '年')}月</p>
-                      {accName
-                        ? <p className="text-xs text-indigo-500">🏦 {accName}</p>
-                        : <p className="text-xs text-amber-500">口座未設定</p>
-                      }
-                      {inc.description && <p className="text-xs text-slate-400">{inc.description}</p>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-green-700">{yen(inc.amount)}</span>
-                      <button onClick={() => deleteIncome(inc.id)} className="text-slate-300 hover:text-red-400">×</button>
-                    </div>
-                  </div>
-                )
-              })}
               {showIncomeForm ? (
                 <form onSubmit={saveIncome} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">見込み給料を設定</h2>
@@ -479,6 +458,27 @@ export default function AccountsPage() {
               ) : (
                 <button onClick={() => setShowIncomeForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 見込み給料を追加</button>
               )}
+              {incomes.map((inc) => {
+                const accName = inc.bank_account_id
+                  ? accounts.find((a) => a.id === inc.bank_account_id)?.name
+                  : null
+                return (
+                  <div key={inc.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium">{inc.month.replace('-', '年')}月</p>
+                      {accName
+                        ? <p className="text-xs text-indigo-500">🏦 {accName}</p>
+                        : <p className="text-xs text-amber-500">口座未設定</p>
+                      }
+                      {inc.description && <p className="text-xs text-slate-400">{inc.description}</p>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-green-700">{yen(inc.amount)}</span>
+                      <button onClick={() => deleteIncome(inc.id)} className="text-slate-300 hover:text-red-400">×</button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </>

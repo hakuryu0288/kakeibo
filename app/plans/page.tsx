@@ -186,6 +186,30 @@ export default function PlansPage() {
                 <p className="text-xl font-bold text-indigo-700">{yen(totalSubs)}</p>
               </div>
               <p className="text-xs text-slate-400 text-center">請求日が来ると自動でカード取引に追加されます</p>
+              {showSubForm ? (
+                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/subscriptions', { name: subForm.name, amount: parseInt(subForm.amount), credit_card_id: subForm.credit_card_id || null, billing_day: parseInt(subForm.billing_day), category_id: subForm.category_id || null }); setSubForm({ name: '', amount: '', credit_card_id: '', billing_day: '1', category_id: '' }); setShowSubForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                  <h2 className="text-sm font-semibold">サブスクを追加</h2>
+                  <input type="text" placeholder="サービス名（例：Netflix）" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="月額（円）" value={subForm.amount} onChange={(e) => setSubForm({ ...subForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                    <input type="number" placeholder="請求日" value={subForm.billing_day} min={1} max={31} onChange={(e) => setSubForm({ ...subForm, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                  </div>
+                  <select value={subForm.credit_card_id} onChange={(e) => setSubForm({ ...subForm, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
+                    <option value="">クレカ未設定</option>
+                    {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select value={subForm.category_id} onChange={(e) => setSubForm({ ...subForm, category_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
+                    <option value="">カテゴリなし</option>
+                    {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                  </select>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setShowSubForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
+                  </div>
+                </form>
+              ) : (
+                <button onClick={() => setShowSubForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ サブスクを追加</button>
+              )}
               {subscriptions.map((s) => {
                 const isPastDay = s.billing_day <= todayDay
                 const isApplied = appliedSubIds.has(s.id)
@@ -248,30 +272,6 @@ export default function PlansPage() {
                   </div>
                 )
               })}
-              {showSubForm ? (
-                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/subscriptions', { name: subForm.name, amount: parseInt(subForm.amount), credit_card_id: subForm.credit_card_id || null, billing_day: parseInt(subForm.billing_day), category_id: subForm.category_id || null }); setSubForm({ name: '', amount: '', credit_card_id: '', billing_day: '1', category_id: '' }); setShowSubForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">サブスクを追加</h2>
-                  <input type="text" placeholder="サービス名（例：Netflix）" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="月額（円）" value={subForm.amount} onChange={(e) => setSubForm({ ...subForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
-                    <input type="number" placeholder="請求日" value={subForm.billing_day} min={1} max={31} onChange={(e) => setSubForm({ ...subForm, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
-                  </div>
-                  <select value={subForm.credit_card_id} onChange={(e) => setSubForm({ ...subForm, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
-                    <option value="">クレカ未設定</option>
-                    {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <select value={subForm.category_id} onChange={(e) => setSubForm({ ...subForm, category_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
-                    <option value="">カテゴリなし</option>
-                    {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-                  </select>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setShowSubForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
-                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
-                  </div>
-                </form>
-              ) : (
-                <button onClick={() => setShowSubForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ サブスクを追加</button>
-              )}
             </div>
           )}
 
@@ -282,6 +282,26 @@ export default function PlansPage() {
                 <p className="text-xs text-orange-600">月額固定費合計（口座引き落とし）</p>
                 <p className="text-xl font-bold text-orange-700">{yen(totalFixed)}</p>
               </div>
+              {showFixedForm ? (
+                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/fixed-costs', { name: fixedForm.name, amount: parseInt(fixedForm.amount), bank_account_id: fixedForm.bank_account_id || null, billing_day: parseInt(fixedForm.billing_day) }); setFixedForm({ name: '', amount: '', bank_account_id: '', billing_day: '27' }); setShowFixedForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                  <h2 className="text-sm font-semibold">固定費を追加</h2>
+                  <input type="text" placeholder="項目名（例：携帯代）" value={fixedForm.name} onChange={(e) => setFixedForm({ ...fixedForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="月額（円）" value={fixedForm.amount} onChange={(e) => setFixedForm({ ...fixedForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                    <input type="number" placeholder="引き落とし日" value={fixedForm.billing_day} min={1} max={31} onChange={(e) => setFixedForm({ ...fixedForm, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                  </div>
+                  <select value={fixedForm.bank_account_id} onChange={(e) => setFixedForm({ ...fixedForm, bank_account_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
+                    <option value="">口座を選択</option>
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setShowFixedForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
+                  </div>
+                </form>
+              ) : (
+                <button onClick={() => setShowFixedForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 固定費を追加</button>
+              )}
               {fixedCosts.map((f) => {
                 if (editFixed?.id === f.id) {
                   return (
@@ -323,32 +343,33 @@ export default function PlansPage() {
                   </div>
                 )
               })}
-              {showFixedForm ? (
-                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/fixed-costs', { name: fixedForm.name, amount: parseInt(fixedForm.amount), bank_account_id: fixedForm.bank_account_id || null, billing_day: parseInt(fixedForm.billing_day) }); setFixedForm({ name: '', amount: '', bank_account_id: '', billing_day: '27' }); setShowFixedForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">固定費を追加</h2>
-                  <input type="text" placeholder="項目名（例：携帯代）" value={fixedForm.name} onChange={(e) => setFixedForm({ ...fixedForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="月額（円）" value={fixedForm.amount} onChange={(e) => setFixedForm({ ...fixedForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
-                    <input type="number" placeholder="引き落とし日" value={fixedForm.billing_day} min={1} max={31} onChange={(e) => setFixedForm({ ...fixedForm, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
-                  </div>
-                  <select value={fixedForm.bank_account_id} onChange={(e) => setFixedForm({ ...fixedForm, bank_account_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
-                    <option value="">口座を選択</option>
-                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setShowFixedForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
-                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
-                  </div>
-                </form>
-              ) : (
-                <button onClick={() => setShowFixedForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 固定費を追加</button>
-              )}
             </div>
           )}
 
           {/* 確定出費 */}
           {tab === 'planned' && (
             <div className="space-y-3">
+              {showPlanForm ? (
+                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/planned-expenses', { name: planForm.name, amount: parseInt(planForm.amount), credit_card_id: planForm.credit_card_id || null, month: planForm.month, note: planForm.note || null }); setPlanForm({ name: '', amount: '', credit_card_id: '', month, note: '' }); setShowPlanForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                  <h2 className="text-sm font-semibold">確定出費を追加</h2>
+                  <input type="text" placeholder="項目名" value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="金額（円）" value={planForm.amount} onChange={(e) => setPlanForm({ ...planForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                    <input type="month" value={planForm.month} onChange={(e) => setPlanForm({ ...planForm, month: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
+                  </div>
+                  <select value={planForm.credit_card_id} onChange={(e) => setPlanForm({ ...planForm, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
+                    <option value="">クレカ未設定</option>
+                    {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <input type="text" placeholder="備考（任意）" value={planForm.note} onChange={(e) => setPlanForm({ ...planForm, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setShowPlanForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
+                  </div>
+                </form>
+              ) : (
+                <button onClick={() => setShowPlanForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 確定出費を追加</button>
+              )}
               {sortedPlannedMonths.length === 0 && (
                 <p className="text-xs text-slate-400 text-center py-4">確定出費なし</p>
               )}
@@ -445,34 +466,35 @@ export default function PlansPage() {
                   </div>
                 )
               })}
-
-              {showPlanForm ? (
-                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/planned-expenses', { name: planForm.name, amount: parseInt(planForm.amount), credit_card_id: planForm.credit_card_id || null, month: planForm.month, note: planForm.note || null }); setPlanForm({ name: '', amount: '', credit_card_id: '', month, note: '' }); setShowPlanForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">確定出費を追加</h2>
-                  <input type="text" placeholder="項目名" value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="金額（円）" value={planForm.amount} onChange={(e) => setPlanForm({ ...planForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
-                    <input type="month" value={planForm.month} onChange={(e) => setPlanForm({ ...planForm, month: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
-                  </div>
-                  <select value={planForm.credit_card_id} onChange={(e) => setPlanForm({ ...planForm, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
-                    <option value="">クレカ未設定</option>
-                    {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <input type="text" placeholder="備考（任意）" value={planForm.note} onChange={(e) => setPlanForm({ ...planForm, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setShowPlanForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
-                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
-                  </div>
-                </form>
-              ) : (
-                <button onClick={() => setShowPlanForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 確定出費を追加</button>
-              )}
             </div>
           )}
 
           {/* 欲しいものリスト */}
           {tab === 'wish' && (
             <div className="space-y-3">
+              {showWishForm ? (
+                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/wish-list', { name: wishForm.name, price: wishForm.price ? parseInt(wishForm.price) : null, priority: parseInt(wishForm.priority), note: wishForm.note || null, url: wishForm.url || null, planned_month: wishForm.planned_month || null }); setWishForm({ name: '', price: '', priority: '0', note: '', url: '', planned_month: '' }); setShowWishForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                  <h2 className="text-sm font-semibold">欲しいものを追加</h2>
+                  <input type="text" placeholder="商品名" value={wishForm.name} onChange={(e) => setWishForm({ ...wishForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="価格（任意）" value={wishForm.price} onChange={(e) => setWishForm({ ...wishForm, price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
+                    <select value={wishForm.priority} onChange={(e) => setWishForm({ ...wishForm, priority: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
+                      <option value="0">優先度なし</option>
+                      <option value="1">★ 低</option>
+                      <option value="2">★★ 中</option>
+                      <option value="3">★★★ 高</option>
+                    </select>
+                  </div>
+                  <input type="month" placeholder="購入予定月（任意）" value={wishForm.planned_month} onChange={(e) => setWishForm({ ...wishForm, planned_month: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                  <input type="text" placeholder="メモ（任意）" value={wishForm.note} onChange={(e) => setWishForm({ ...wishForm, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setShowWishForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
+                  </div>
+                </form>
+              ) : (
+                <button onClick={() => setShowWishForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 追加</button>
+              )}
               {wishList.map((w) => {
                 if (editWish?.id === w.id) {
                   return (
@@ -554,29 +576,6 @@ export default function PlansPage() {
                   </div>
                 )
               })}
-              {showWishForm ? (
-                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/wish-list', { name: wishForm.name, price: wishForm.price ? parseInt(wishForm.price) : null, priority: parseInt(wishForm.priority), note: wishForm.note || null, url: wishForm.url || null, planned_month: wishForm.planned_month || null }); setWishForm({ name: '', price: '', priority: '0', note: '', url: '', planned_month: '' }); setShowWishForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">欲しいものを追加</h2>
-                  <input type="text" placeholder="商品名" value={wishForm.name} onChange={(e) => setWishForm({ ...wishForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="価格（任意）" value={wishForm.price} onChange={(e) => setWishForm({ ...wishForm, price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
-                    <select value={wishForm.priority} onChange={(e) => setWishForm({ ...wishForm, priority: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
-                      <option value="0">優先度なし</option>
-                      <option value="1">★ 低</option>
-                      <option value="2">★★ 中</option>
-                      <option value="3">★★★ 高</option>
-                    </select>
-                  </div>
-                  <input type="month" placeholder="購入予定月（任意）" value={wishForm.planned_month} onChange={(e) => setWishForm({ ...wishForm, planned_month: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
-                  <input type="text" placeholder="メモ（任意）" value={wishForm.note} onChange={(e) => setWishForm({ ...wishForm, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setShowWishForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
-                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
-                  </div>
-                </form>
-              ) : (
-                <button onClick={() => setShowWishForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 追加</button>
-              )}
             </div>
           )}
         </>

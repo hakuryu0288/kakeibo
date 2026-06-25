@@ -211,7 +211,7 @@ export default function AssetsPage() {
                 <p className="text-xs text-indigo-600">商材評価額合計（売価ベース）</p>
                 <p className="text-2xl font-bold text-indigo-700">{yen(totalResaleValue)}</p>
               </div>
-              {showResaleForm && (
+              {showResaleForm ? (
                 <form onSubmit={saveResale} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">{editResaleId ? '編集' : '商材を追加'}</h2>
                   <input type="text" placeholder="商品名" value={resaleForm.name} onChange={(e) => setResaleForm({ ...resaleForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
@@ -225,6 +225,8 @@ export default function AssetsPage() {
                     <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
                   </div>
                 </form>
+              ) : (
+                <button onClick={() => { setResaleForm(defaultResaleForm); setEditResaleId(null); setShowResaleForm(true) }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 商材を追加</button>
               )}
               <div className="space-y-2">
                 {resaleItems.map((item) => (
@@ -246,9 +248,6 @@ export default function AssetsPage() {
                   </div>
                 ))}
               </div>
-              {!showResaleForm && (
-                <button onClick={() => { setResaleForm(defaultResaleForm); setEditResaleId(null); setShowResaleForm(true) }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 商材を追加</button>
-              )}
             </div>
           )}
 
@@ -285,6 +284,19 @@ export default function AssetsPage() {
                 <p className="text-2xl font-bold text-yellow-700">{totalPoints.toLocaleString('ja-JP')} pt</p>
                 <p className="text-xs text-yellow-500">≒ {yen(totalPoints)}</p>
               </div>
+              {showPointForm ? (
+                <form onSubmit={savePoint} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                  <h2 className="text-sm font-semibold">{editPointId ? 'ポイントを編集' : 'ポイントを追加'}</h2>
+                  <input type="text" placeholder="ポイント名（例：楽天ポイント）" value={pointForm.name} onChange={(e) => setPointForm({ ...pointForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <input type="number" placeholder="残高（ポイント数）" value={pointForm.balance} onChange={(e) => setPointForm({ ...pointForm, balance: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => { setShowPointForm(false); setEditPointId(null); setPointForm({ name: '', balance: '' }) }} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
+                  </div>
+                </form>
+              ) : (
+                <button onClick={() => { setPointForm({ name: '', balance: '' }); setEditPointId(null); setShowPointForm(true) }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ ポイントを追加</button>
+              )}
               {points.map((p) => (
                 <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
                   <div>
@@ -297,20 +309,6 @@ export default function AssetsPage() {
                   </div>
                 </div>
               ))}
-              {showPointForm && (
-                <form onSubmit={savePoint} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">{editPointId ? 'ポイントを編集' : 'ポイントを追加'}</h2>
-                  <input type="text" placeholder="ポイント名（例：楽天ポイント）" value={pointForm.name} onChange={(e) => setPointForm({ ...pointForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
-                  <input type="number" placeholder="残高（ポイント数）" value={pointForm.balance} onChange={(e) => setPointForm({ ...pointForm, balance: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => { setShowPointForm(false); setEditPointId(null); setPointForm({ name: '', balance: '' }) }} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
-                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
-                  </div>
-                </form>
-              )}
-              {!showPointForm && (
-                <button onClick={() => { setPointForm({ name: '', balance: '' }); setEditPointId(null); setShowPointForm(true) }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ ポイントを追加</button>
-              )}
             </div>
           )}
 
@@ -324,6 +322,28 @@ export default function AssetsPage() {
                   </p>
                   <p className="text-xs text-amber-500 mt-0.5">カード/現金→給料タブで入金口座を設定してください</p>
                 </div>
+              )}
+
+              {showBankForm ? (
+                <form onSubmit={saveBankAccount} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                  <h2 className="text-sm font-semibold">{bankForm.id ? '口座を更新' : '口座を追加'}</h2>
+                  <input type="text" placeholder="口座名（例：楽天銀行）" value={bankForm.name}
+                    onChange={(e) => setBankForm({ ...bankForm, name: e.target.value })}
+                    className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <input type="number" placeholder="現在の残高" value={bankForm.balance}
+                    onChange={(e) => setBankForm({ ...bankForm, balance: e.target.value })}
+                    className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <input type="text" placeholder="メモ（任意）" value={bankForm.note}
+                    onChange={(e) => setBankForm({ ...bankForm, note: e.target.value })}
+                    className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setShowBankForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
+                  </div>
+                </form>
+              ) : (
+                <button onClick={() => { setBankForm({ id: '', name: '', balance: '', note: '' }); setShowBankForm(true) }}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 口座を追加</button>
               )}
 
               {bankAccounts.map((acc) => {
@@ -402,28 +422,6 @@ export default function AssetsPage() {
                   </div>
                 )
               })}
-
-              {showBankForm ? (
-                <form onSubmit={saveBankAccount} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">{bankForm.id ? '口座を更新' : '口座を追加'}</h2>
-                  <input type="text" placeholder="口座名（例：楽天銀行）" value={bankForm.name}
-                    onChange={(e) => setBankForm({ ...bankForm, name: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
-                  <input type="number" placeholder="現在の残高" value={bankForm.balance}
-                    onChange={(e) => setBankForm({ ...bankForm, balance: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
-                  <input type="text" placeholder="メモ（任意）" value={bankForm.note}
-                    onChange={(e) => setBankForm({ ...bankForm, note: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setShowBankForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
-                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
-                  </div>
-                </form>
-              ) : (
-                <button onClick={() => { setBankForm({ id: '', name: '', balance: '', note: '' }); setShowBankForm(true) }}
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 口座を追加</button>
-              )}
             </div>
           )}
         </>
