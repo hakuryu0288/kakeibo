@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Subscription, PlannedExpense, WishItem, BigExpense, CreditCard, FixedCost, BankAccount, Transaction, Category } from '@/lib/supabase'
+import { Subscription, PlannedExpense, WishItem, CreditCard, FixedCost, BankAccount, Transaction, Category } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -16,30 +16,20 @@ function today() {
   return new Date().toISOString().split('T')[0]
 }
 
-function nextMonthOf(m: string) {
-  const d = new Date(`${m}-01`)
-  d.setMonth(d.getMonth() + 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
 export default function PlansPage() {
-  const [tab, setTab] = useState<'planned' | 'wish' | 'big' | 'sub' | 'fixed'>('planned')
+  const [tab, setTab] = useState<'planned' | 'wish' | 'sub' | 'fixed'>('planned')
   const [cards, setCards] = useState<CreditCard[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
-  const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpense[]>([])
-  const [nextMonthPlanned, setNextMonthPlanned] = useState<PlannedExpense[]>([])
+  const [allPlannedExpenses, setAllPlannedExpenses] = useState<PlannedExpense[]>([])
   const [wishList, setWishList] = useState<WishItem[]>([])
-  const [bigExpenses, setBigExpenses] = useState<BigExpense[]>([])
   const [appliedSubIds, setAppliedSubIds] = useState<Set<string>>(new Set())
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
 
   const month = currentMonth()
-  const nextMonth = nextMonthOf(month)
   const [, mon] = month.split('-')
-  const [, nextMon] = nextMonth.split('-')
   const todayDay = new Date().getDate()
 
   // フォーム状態
@@ -51,13 +41,10 @@ export default function PlansPage() {
   const [showPlanForm, setShowPlanForm] = useState(false)
   const [wishForm, setWishForm] = useState({ name: '', price: '', priority: '0', note: '', url: '', planned_month: '' })
   const [showWishForm, setShowWishForm] = useState(false)
-  const [bigForm, setBigForm] = useState({ name: '', amount: '', planned_date: '', note: '' })
-  const [showBigForm, setShowBigForm] = useState(false)
 
   // インライン編集状態
   const [editPlanned, setEditPlanned] = useState<{ id: string; name: string; amount: string; credit_card_id: string; note: string } | null>(null)
   const [editWish, setEditWish] = useState<{ id: string; name: string; price: string; note: string; priority: string; planned_month: string } | null>(null)
-  const [editBig, setEditBig] = useState<{ id: string; name: string; amount: string; planned_date: string; note: string } | null>(null)
   const [editSub, setEditSub] = useState<{ id: string; name: string; amount: string; billing_day: string; credit_card_id: string } | null>(null)
   const [editFixed, setEditFixed] = useState<{ id: string; name: string; amount: string; billing_day: string; bank_account_id: string } | null>(null)
 
@@ -76,21 +63,17 @@ export default function PlansPage() {
       fetch('/api/bank-accounts').then((r) => r.json()),
       fetch('/api/subscriptions').then((r) => r.json()),
       fetch('/api/fixed-costs').then((r) => r.json()),
-      fetch(`/api/planned-expenses?month=${month}`).then((r) => r.json()),
-      fetch(`/api/planned-expenses?month=${nextMonth}`).then((r) => r.json()),
+      fetch('/api/planned-expenses').then((r) => r.json()),
       fetch('/api/wish-list').then((r) => r.json()),
-      fetch('/api/big-expenses').then((r) => r.json()),
       fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
       fetch('/api/categories').then((r) => r.json()),
-    ]).then(([c, a, s, f, p, pn, w, b, txns, cats]) => {
+    ]).then(([c, a, s, f, p, w, txns, cats]) => {
       setCards(Array.isArray(c) ? c : [])
       setAccounts(Array.isArray(a) ? a : [])
       setSubscriptions(Array.isArray(s) ? s : [])
       setFixedCosts(Array.isArray(f) ? f : [])
-      setPlannedExpenses(Array.isArray(p) ? p : [])
-      setNextMonthPlanned(Array.isArray(pn) ? pn : [])
+      setAllPlannedExpenses(Array.isArray(p) ? p : [])
       setWishList(Array.isArray(w) ? w : [])
-      setBigExpenses(Array.isArray(b) ? b : [])
       setCategories(Array.isArray(cats) ? cats : [])
       const applied = new Set<string>(
         (Array.isArray(txns) ? txns : [])
@@ -136,7 +119,7 @@ export default function PlansPage() {
 
   // 確定出費 → 取引として登録
   const handleRegisterTransaction = async (plannedId: string) => {
-    const planned = [...plannedExpenses, ...nextMonthPlanned].find((p) => p.id === plannedId)
+    const planned = allPlannedExpenses.find((p) => p.id === plannedId)
     if (!planned) return
     await fetch('/api/transactions', {
       method: 'POST',
@@ -164,13 +147,18 @@ export default function PlansPage() {
   const expenseCategories = categories.filter((c) => c.type === 'expense')
   const totalSubs = subscriptions.filter((s) => s.is_active).reduce((sum, s) => sum + s.amount, 0)
   const totalFixed = fixedCosts.filter((f) => f.is_active).reduce((sum, f) => sum + f.amount, 0)
-  const totalPlanned = plannedExpenses.reduce((sum, p) => sum + p.amount, 0)
-  const totalNextPlanned = nextMonthPlanned.reduce((sum, p) => sum + p.amount, 0)
+
+  // 確定出費を月ごとにグループ化（昇順）
+  const plannedByMonth = allPlannedExpenses.reduce((acc, p) => {
+    if (!acc[p.month]) acc[p.month] = []
+    acc[p.month].push(p)
+    return acc
+  }, {} as Record<string, PlannedExpense[]>)
+  const sortedPlannedMonths = Object.keys(plannedByMonth).sort()
 
   const tabs = [
     { key: 'planned', label: '確定出費' },
     { key: 'wish', label: '欲しい' },
-    { key: 'big', label: '大型' },
     { key: 'sub', label: 'サブスク' },
     { key: 'fixed', label: '固定費' },
   ] as const
@@ -361,163 +349,99 @@ export default function PlansPage() {
           {/* 確定出費 */}
           {tab === 'planned' && (
             <div className="space-y-3">
-              <div className="bg-red-50 rounded-xl p-3 flex justify-between items-center">
-                <p className="text-xs text-red-600 font-medium">今月（{mon}月）の確定出費</p>
-                <p className="text-base font-bold text-red-700">{yen(totalPlanned)}</p>
-              </div>
-              {plannedExpenses.length === 0 && (
-                <p className="text-xs text-slate-400 text-center py-2">今月の確定出費なし</p>
+              {sortedPlannedMonths.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-4">確定出費なし</p>
               )}
-              {plannedExpenses.map((p) => {
-                if (editPlanned?.id === p.id) {
-                  return (
-                    <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
-                      <input type="text" value={editPlanned.name} onChange={(e) => setEditPlanned({ ...editPlanned, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="number" value={editPlanned.amount} onChange={(e) => setEditPlanned({ ...editPlanned, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
-                        <select value={editPlanned.credit_card_id} onChange={(e) => setEditPlanned({ ...editPlanned, credit_card_id: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
-                          <option value="">クレカなし</option>
-                          {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </div>
-                      <input type="text" value={editPlanned.note} onChange={(e) => setEditPlanned({ ...editPlanned, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="備考（任意）" />
-                      <div className="flex gap-2">
-                        <button onClick={() => setEditPlanned(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
-                        <button onClick={async () => {
-                          await patch('/api/planned-expenses', { id: editPlanned.id, name: editPlanned.name, amount: parseInt(editPlanned.amount), credit_card_id: editPlanned.credit_card_id || null, note: editPlanned.note || null })
-                          setEditPlanned(null)
-                        }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
-                      </div>
-                    </div>
-                  )
-                }
-                return (
-                  <div key={p.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <div className="p-3 flex justify-between items-center">
-                      <div>
-                        <p className="text-sm font-medium">{p.name}</p>
-                        <p className="text-xs text-slate-400">{p.credit_cards?.name ?? 'カードなし'}</p>
-                        {p.note && <p className="text-xs text-slate-400 mt-0.5">📝 {p.note}</p>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold">{yen(p.amount)}</span>
-                        <button onClick={() => setEditPlanned({ id: p.id, name: p.name, amount: String(p.amount), credit_card_id: p.credit_card_id ?? '', note: p.note ?? '' })} className="text-slate-400 hover:text-indigo-500">✏️</button>
-                        <button onClick={() => del('/api/planned-expenses', p.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
-                      </div>
-                    </div>
-                    {/* 取引として登録 */}
-                    {registerPlannedId === p.id ? (
-                      <div className="px-3 pb-3 pt-1 border-t border-slate-100 bg-slate-50 space-y-2">
-                        <p className="text-xs font-semibold text-slate-500">カード取引として登録</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-slate-400">日付</label>
-                            <input type="date" value={registerDate} onChange={(e) => setRegisterDate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white" />
-                          </div>
-                          <div>
-                            <label className="text-xs text-slate-400">カード</label>
-                            <select value={registerCardId || p.credit_card_id || ''} onChange={(e) => setRegisterCardId(e.target.value)} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white">
-                              <option value="">カードなし（現金）</option>
-                              {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => { setRegisterPlannedId(null); setRegisterCardId('') }} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs bg-white">キャンセル</button>
-                          <button onClick={() => handleRegisterTransaction(p.id)} className="flex-1 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold">登録して完了にする</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => { setRegisterPlannedId(p.id); setRegisterDate(today()); setRegisterCardId(p.credit_card_id ?? '') }}
-                        className="w-full py-1.5 border-t border-slate-100 text-xs text-emerald-600 hover:bg-emerald-50 transition-colors"
-                      >
-                        ＋ カード取引に登録して完了にする
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
 
-              {/* 来月 */}
-              <div className="flex items-center gap-2 pt-1">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-xs text-slate-400 font-medium whitespace-nowrap">来月（{nextMon}月）</span>
-                <div className="flex-1 h-px bg-slate-200" />
-              </div>
-              <div className="bg-amber-50 rounded-xl p-3 flex justify-between items-center">
-                <p className="text-xs text-amber-600 font-medium">来月（{nextMon}月）の確定出費</p>
-                <p className="text-base font-bold text-amber-700">{yen(totalNextPlanned)}</p>
-              </div>
-              {nextMonthPlanned.length === 0 && (
-                <p className="text-xs text-slate-400 text-center py-2">来月の確定出費なし</p>
-              )}
-              {nextMonthPlanned.map((p) => {
-                if (editPlanned?.id === p.id) {
-                  return (
-                    <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm border-l-2 border-amber-300 space-y-2">
-                      <input type="text" value={editPlanned.name} onChange={(e) => setEditPlanned({ ...editPlanned, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="number" value={editPlanned.amount} onChange={(e) => setEditPlanned({ ...editPlanned, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
-                        <select value={editPlanned.credit_card_id} onChange={(e) => setEditPlanned({ ...editPlanned, credit_card_id: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
-                          <option value="">クレカなし</option>
-                          {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </div>
-                      <input type="text" value={editPlanned.note} onChange={(e) => setEditPlanned({ ...editPlanned, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="備考（任意）" />
-                      <div className="flex gap-2">
-                        <button onClick={() => setEditPlanned(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
-                        <button onClick={async () => {
-                          await patch('/api/planned-expenses', { id: editPlanned.id, name: editPlanned.name, amount: parseInt(editPlanned.amount), credit_card_id: editPlanned.credit_card_id || null, note: editPlanned.note || null })
-                          setEditPlanned(null)
-                        }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
-                      </div>
-                    </div>
-                  )
-                }
+              {sortedPlannedMonths.map((m) => {
+                const expenses = plannedByMonth[m]
+                const total = expenses.reduce((s, p) => s + p.amount, 0)
+                const [mYear, mMon] = m.split('-')
+                const isCurrentMonth = m === month
+                const isPast = m < month
+
                 return (
-                  <div key={p.id} className="bg-white rounded-xl shadow-sm overflow-hidden border-l-2 border-amber-300">
-                    <div className="p-3 flex justify-between items-center">
-                      <div>
-                        <p className="text-sm font-medium">{p.name}</p>
-                        <p className="text-xs text-slate-400">{p.credit_cards?.name ?? 'カードなし'} · {nextMon}月</p>
-                        {p.note && <p className="text-xs text-slate-400 mt-0.5">📝 {p.note}</p>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold">{yen(p.amount)}</span>
-                        <button onClick={() => setEditPlanned({ id: p.id, name: p.name, amount: String(p.amount), credit_card_id: p.credit_card_id ?? '', note: p.note ?? '' })} className="text-slate-400 hover:text-indigo-500">✏️</button>
-                        <button onClick={() => del('/api/planned-expenses', p.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
-                      </div>
+                  <div key={m} className="space-y-2">
+                    <div className={`rounded-xl p-3 flex justify-between items-center ${
+                      isCurrentMonth ? 'bg-red-50' : isPast ? 'bg-slate-50' : 'bg-amber-50'
+                    }`}>
+                      <p className={`text-xs font-medium ${
+                        isCurrentMonth ? 'text-red-600' : isPast ? 'text-slate-500' : 'text-amber-600'
+                      }`}>{mYear}年{mMon}月の確定出費</p>
+                      <p className={`text-base font-bold ${
+                        isCurrentMonth ? 'text-red-700' : isPast ? 'text-slate-600' : 'text-amber-700'
+                      }`}>{yen(total)}</p>
                     </div>
-                    {registerPlannedId === p.id ? (
-                      <div className="px-3 pb-3 pt-1 border-t border-slate-100 bg-slate-50 space-y-2">
-                        <p className="text-xs font-semibold text-slate-500">カード取引として登録</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-slate-400">日付</label>
-                            <input type="date" value={registerDate} onChange={(e) => setRegisterDate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white" />
+
+                    {expenses.map((p) => {
+                      if (editPlanned?.id === p.id) {
+                        return (
+                          <div key={p.id} className={`bg-white rounded-xl p-3 shadow-sm space-y-2 ${!isCurrentMonth && !isPast ? 'border-l-2 border-amber-300' : ''}`}>
+                            <input type="text" value={editPlanned.name} onChange={(e) => setEditPlanned({ ...editPlanned, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="number" value={editPlanned.amount} onChange={(e) => setEditPlanned({ ...editPlanned, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
+                              <select value={editPlanned.credit_card_id} onChange={(e) => setEditPlanned({ ...editPlanned, credit_card_id: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
+                                <option value="">クレカなし</option>
+                                {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              </select>
+                            </div>
+                            <input type="text" value={editPlanned.note} onChange={(e) => setEditPlanned({ ...editPlanned, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="備考（任意）" />
+                            <div className="flex gap-2">
+                              <button onClick={() => setEditPlanned(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                              <button onClick={async () => {
+                                await patch('/api/planned-expenses', { id: editPlanned.id, name: editPlanned.name, amount: parseInt(editPlanned.amount), credit_card_id: editPlanned.credit_card_id || null, note: editPlanned.note || null })
+                                setEditPlanned(null)
+                              }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
+                            </div>
                           </div>
-                          <div>
-                            <label className="text-xs text-slate-400">カード</label>
-                            <select value={registerCardId || p.credit_card_id || ''} onChange={(e) => setRegisterCardId(e.target.value)} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white">
-                              <option value="">カードなし（現金）</option>
-                              {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
+                        )
+                      }
+                      return (
+                        <div key={p.id} className={`bg-white rounded-xl shadow-sm overflow-hidden ${!isCurrentMonth && !isPast ? 'border-l-2 border-amber-300' : ''}`}>
+                          <div className="p-3 flex justify-between items-center">
+                            <div>
+                              <p className="text-sm font-medium">{p.name}</p>
+                              <p className="text-xs text-slate-400">{p.credit_cards?.name ?? 'カードなし'}</p>
+                              {p.note && <p className="text-xs text-slate-400 mt-0.5">📝 {p.note}</p>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold">{yen(p.amount)}</span>
+                              <button onClick={() => setEditPlanned({ id: p.id, name: p.name, amount: String(p.amount), credit_card_id: p.credit_card_id ?? '', note: p.note ?? '' })} className="text-slate-400 hover:text-indigo-500">✏️</button>
+                              <button onClick={() => del('/api/planned-expenses', p.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
+                            </div>
                           </div>
+                          {registerPlannedId === p.id ? (
+                            <div className="px-3 pb-3 pt-1 border-t border-slate-100 bg-slate-50 space-y-2">
+                              <p className="text-xs font-semibold text-slate-500">カード取引として登録</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-xs text-slate-400">日付</label>
+                                  <input type="date" value={registerDate} onChange={(e) => setRegisterDate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-slate-400">カード</label>
+                                  <select value={registerCardId || p.credit_card_id || ''} onChange={(e) => setRegisterCardId(e.target.value)} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white">
+                                    <option value="">カードなし（現金）</option>
+                                    {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => { setRegisterPlannedId(null); setRegisterCardId('') }} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs bg-white">キャンセル</button>
+                                <button onClick={() => handleRegisterTransaction(p.id)} className="flex-1 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold">登録して完了にする</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setRegisterPlannedId(p.id); setRegisterDate(today()); setRegisterCardId(p.credit_card_id ?? '') }}
+                              className="w-full py-1.5 border-t border-slate-100 text-xs text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            >
+                              ＋ カード取引に登録して完了にする
+                            </button>
+                          )}
                         </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => { setRegisterPlannedId(null); setRegisterCardId('') }} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs bg-white">キャンセル</button>
-                          <button onClick={() => handleRegisterTransaction(p.id)} className="flex-1 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold">登録して完了にする</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => { setRegisterPlannedId(p.id); setRegisterDate(today()); setRegisterCardId(p.credit_card_id ?? '') }}
-                        className="w-full py-1.5 border-t border-slate-100 text-xs text-emerald-600 hover:bg-emerald-50 transition-colors"
-                      >
-                        ＋ カード取引に登録して完了にする
-                      </button>
-                    )}
+                      )
+                    })}
                   </div>
                 )
               })}
@@ -652,64 +576,6 @@ export default function PlansPage() {
                 </form>
               ) : (
                 <button onClick={() => setShowWishForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 追加</button>
-              )}
-            </div>
-          )}
-
-          {/* 大型出費 */}
-          {tab === 'big' && (
-            <div className="space-y-3">
-              {bigExpenses.map((b) => {
-                if (editBig?.id === b.id) {
-                  return (
-                    <div key={b.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
-                      <input type="text" value={editBig.name} onChange={(e) => setEditBig({ ...editBig, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="number" value={editBig.amount} onChange={(e) => setEditBig({ ...editBig, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
-                        <input type="date" value={editBig.planned_date} onChange={(e) => setEditBig({ ...editBig, planned_date: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
-                      </div>
-                      <input type="text" value={editBig.note} onChange={(e) => setEditBig({ ...editBig, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="メモ（任意）" />
-                      <div className="flex gap-2">
-                        <button onClick={() => setEditBig(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
-                        <button onClick={async () => {
-                          await patch('/api/big-expenses', { id: editBig.id, name: editBig.name, amount: parseInt(editBig.amount), planned_date: editBig.planned_date || null, note: editBig.note || null })
-                          setEditBig(null)
-                        }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
-                      </div>
-                    </div>
-                  )
-                }
-                return (
-                  <div key={b.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-start">
-                    <div>
-                      <p className="text-sm font-medium">{b.name}</p>
-                      {b.planned_date && <p className="text-xs text-slate-400">予定日: {b.planned_date}</p>}
-                      {b.note && <p className="text-xs text-slate-400">{b.note}</p>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold">{yen(b.amount)}</span>
-                      <button onClick={() => setEditBig({ id: b.id, name: b.name, amount: String(b.amount), planned_date: b.planned_date ?? '', note: b.note ?? '' })} className="text-slate-400 hover:text-indigo-500">✏️</button>
-                      <button onClick={() => del('/api/big-expenses', b.id, '削除しますか？')} className="text-slate-300 hover:text-red-400">×</button>
-                    </div>
-                  </div>
-                )
-              })}
-              {showBigForm ? (
-                <form onSubmit={async (e) => { e.preventDefault(); await post('/api/big-expenses', { name: bigForm.name, amount: parseInt(bigForm.amount), planned_date: bigForm.planned_date || null, note: bigForm.note || null }); setBigForm({ name: '', amount: '', planned_date: '', note: '' }); setShowBigForm(false) }} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">大型出費を追加</h2>
-                  <input type="text" placeholder="項目名" value={bigForm.name} onChange={(e) => setBigForm({ ...bigForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="金額（円）" value={bigForm.amount} onChange={(e) => setBigForm({ ...bigForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
-                    <input type="date" value={bigForm.planned_date} onChange={(e) => setBigForm({ ...bigForm, planned_date: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
-                  </div>
-                  <input type="text" placeholder="メモ（任意）" value={bigForm.note} onChange={(e) => setBigForm({ ...bigForm, note: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setShowBigForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
-                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
-                  </div>
-                </form>
-              ) : (
-                <button onClick={() => setShowBigForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 追加</button>
               )}
             </div>
           )}

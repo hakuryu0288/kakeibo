@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ResaleItem, NisaSettings, ExpectedIncome, BankAccount } from '@/lib/supabase'
+import { ResaleItem, NisaSettings, BankAccount, CreditCard, FixedCost, CardMonthlyOverride, Transaction, ExpectedIncome } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -9,6 +9,12 @@ function yen(n: number) {
 
 function currentMonth() {
   const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function shiftMonth(month: string, delta: number): string {
+  const d = new Date(`${month}-01`)
+  d.setMonth(d.getMonth() + delta)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
@@ -46,7 +52,8 @@ type ResaleFormState = { name: string; quantity: string; purchase_price: string;
 const defaultResaleForm: ResaleFormState = { name: '', quantity: '1', purchase_price: '', sell_price: '' }
 
 export default function AssetsPage() {
-  const [tab, setTab] = useState<'points' | 'nisa' | 'resale' | 'income'>('points')
+  const today = currentMonth()
+  const [tab, setTab] = useState<'points' | 'nisa' | 'resale' | 'bank'>('points')
 
   // 商材
   const [resaleItems, setResaleItems] = useState<ResaleItem[]>([])
@@ -66,24 +73,31 @@ export default function AssetsPage() {
   const [editPointId, setEditPointId] = useState<string | null>(null)
   const [showPointForm, setShowPointForm] = useState(false)
 
-  // 見込み給料
-  const [incomes, setIncomes] = useState<ExpectedIncome[]>([])
-  const [incomeForm, setIncomeForm] = useState({ month: currentMonth(), amount: '', description: '', bank_account_id: '' })
-  const [showIncomeForm, setShowIncomeForm] = useState(false)
-
-  // 銀行口座（給料の入金先）
+  // 銀行口座
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [cards, setCards] = useState<CreditCard[]>([])
+  const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([])
+  const [expectedIncomes, setExpectedIncomes] = useState<ExpectedIncome[]>([])
+  const [prevMonthTxns, setPrevMonthTxns] = useState<Transaction[]>([])
+  const [prevMonthOverrides, setPrevMonthOverrides] = useState<CardMonthlyOverride[]>([])
+  const [bankForm, setBankForm] = useState({ id: '', name: '', balance: '', note: '' })
+  const [showBankForm, setShowBankForm] = useState(false)
 
   const [loading, setLoading] = useState(true)
 
   const fetchAll = () => {
+    const prevMonth = shiftMonth(today, -1)
     Promise.all([
       fetch('/api/resale-items').then((r) => r.json()),
       fetch('/api/nisa').then((r) => r.json()),
       fetch('/api/point-balances').then((r) => r.json()),
-      fetch('/api/expected-income').then((r) => r.json()),
       fetch('/api/bank-accounts').then((r) => r.json()),
-    ]).then(([ri, ns, pb, ei, ba]) => {
+      fetch('/api/credit-cards').then((r) => r.json()),
+      fetch('/api/fixed-costs').then((r) => r.json()),
+      fetch(`/api/expected-income?month=${today}`).then((r) => r.json()),
+      fetch(`/api/transactions?month=${prevMonth}`).then((r) => r.json()),
+      fetch(`/api/card-monthly-overrides?month=${prevMonth}`).then((r) => r.json()),
+    ]).then(([ri, ns, pb, ba, cr, fc, ei, prevTxns, prevOverrides]) => {
       setResaleItems(Array.isArray(ri) ? ri : [])
       if (ns?.id) {
         setNisa(ns)
@@ -91,8 +105,12 @@ export default function AssetsPage() {
         setNisaContrib(String(ns.monthly_contribution))
       }
       setPoints(Array.isArray(pb) ? pb : [])
-      setIncomes(Array.isArray(ei) ? ei : [])
       setBankAccounts(Array.isArray(ba) ? ba : [])
+      setCards(Array.isArray(cr) ? cr : [])
+      setFixedCosts(Array.isArray(fc) ? fc : [])
+      setExpectedIncomes(Array.isArray(ei) ? ei : [])
+      setPrevMonthTxns(Array.isArray(prevTxns) ? prevTxns.filter((t: Transaction) => t.type === 'expense') : [])
+      setPrevMonthOverrides(Array.isArray(prevOverrides) ? prevOverrides : [])
       setLoading(false)
     })
   }
@@ -127,18 +145,23 @@ export default function AssetsPage() {
     fetchAll()
   }
 
-  // 見込み給料保存
-  const saveIncome = async (e: React.FormEvent) => {
+  // 銀行口座保存
+  const saveBankAccount = async (e: React.FormEvent) => {
     e.preventDefault()
-    await fetch('/api/expected-income', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month: incomeForm.month, amount: parseInt(incomeForm.amount), description: incomeForm.description || null, bank_account_id: incomeForm.bank_account_id || null }) })
-    setIncomeForm({ month: currentMonth(), amount: '', description: '', bank_account_id: '' })
-    setShowIncomeForm(false)
+    const payload = { name: bankForm.name, balance: parseFloat(bankForm.balance), note: bankForm.note || null }
+    if (bankForm.id) {
+      await fetch('/api/bank-accounts', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: bankForm.id, ...payload }) })
+    } else {
+      await fetch('/api/bank-accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    }
+    setBankForm({ id: '', name: '', balance: '', note: '' })
+    setShowBankForm(false)
     fetchAll()
   }
 
-  const deleteIncome = async (id: string) => {
-    if (!confirm('削除しますか？')) return
-    await fetch(`/api/expected-income?id=${id}`, { method: 'DELETE' })
+  const deleteAccount = async (id: string) => {
+    if (!confirm('この口座を削除しますか？')) return
+    await fetch(`/api/bank-accounts?id=${id}`, { method: 'DELETE' })
     fetchAll()
   }
 
@@ -171,7 +194,7 @@ export default function AssetsPage() {
       <h1 className="text-xl font-bold">資産管理</h1>
 
       <div className="grid grid-cols-4 gap-1 bg-slate-100 rounded-xl p-1">
-        {([['points','ポイント'],['nisa','NISA'],['resale','商材'],['income','給料']] as const).map(([key, label]) => (
+        {([['points','ポイント'],['nisa','NISA'],['resale','商材'],['bank','銀行']] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${tab === key ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
             {label}
@@ -291,58 +314,115 @@ export default function AssetsPage() {
             </div>
           )}
 
-          {/* 見込み給料タブ */}
-          {tab === 'income' && (
+          {/* 銀行口座タブ */}
+          {tab === 'bank' && (
             <div className="space-y-3">
-              {incomes.map((inc) => {
-                const accName = inc.bank_account_id
-                  ? bankAccounts.find((a) => a.id === inc.bank_account_id)?.name
-                  : null
-                return (
-                <div key={inc.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
-                  <div>
-                    <p className="text-sm font-medium">{inc.month.replace('-', '年')}月</p>
-                    {accName
-                      ? <p className="text-xs text-indigo-500">🏦 {accName}</p>
-                      : <p className="text-xs text-amber-500">口座未設定</p>
-                    }
-                    {inc.description && <p className="text-xs text-slate-400">{inc.description}</p>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-green-700">{yen(inc.amount)}</span>
-                    <button onClick={() => deleteIncome(inc.id)} className="text-slate-300 hover:text-red-400">×</button>
-                  </div>
+              {expectedIncomes.filter((e) => !e.bank_account_id).reduce((s, e) => s + e.amount, 0) > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs text-amber-700 font-medium">
+                    ⚠️ 口座未割り当ての給料: +{yen(expectedIncomes.filter((e) => !e.bank_account_id).reduce((s, e) => s + e.amount, 0))}
+                  </p>
+                  <p className="text-xs text-amber-500 mt-0.5">カード/現金→給料タブで入金口座を設定してください</p>
                 </div>
+              )}
+
+              {bankAccounts.map((acc) => {
+                const cardsForAcc = cards.filter((c) => c.bank_account_id === acc.id)
+
+                const incomeForAcc = expectedIncomes
+                  .filter((e) => e.bank_account_id === acc.id)
+                  .reduce((s, e) => s + e.amount, 0)
+
+                const cardCharge = (() => {
+                  let total = 0
+                  for (const card of cardsForAcc) {
+                    const override = prevMonthOverrides.find((o) => o.credit_card_id === card.id)
+                    if (override) {
+                      total += override.override_amount
+                    } else {
+                      total += prevMonthTxns
+                        .filter((t) => t.credit_card_id === card.id)
+                        .reduce((s, t) => s + t.amount, 0)
+                    }
+                  }
+                  return total
+                })()
+
+                const fixedCharge = fixedCosts
+                  .filter((f) => f.is_active && f.bank_account_id === acc.id)
+                  .reduce((s, f) => s + f.amount, 0)
+
+                const totalDeductions = cardCharge + fixedCharge
+                const projectedBalance = Number(acc.balance) + incomeForAcc - totalDeductions
+                const isNegative = projectedBalance < 0
+
+                return (
+                  <div key={acc.id} className="bg-white rounded-xl p-4 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold">🏦 {acc.name}</p>
+                        {acc.note && <p className="text-xs text-slate-400 mt-0.5">{acc.note}</p>}
+                      </div>
+                      <p className="text-lg font-bold text-indigo-700">{yen(Number(acc.balance))}</p>
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                      {incomeForAcc > 0 && (
+                        <div className="flex justify-between text-xs text-slate-500">
+                          <span>💰 見込み給料</span>
+                          <span className="text-green-600 font-medium">+{yen(incomeForAcc)}</span>
+                        </div>
+                      )}
+                      {cardCharge > 0 && (
+                        <div className="flex justify-between text-xs text-slate-500">
+                          <span>💳 カード請求（先月実績）</span>
+                          <span className="text-red-500 font-medium">-{yen(cardCharge)}</span>
+                        </div>
+                      )}
+                      {fixedCharge > 0 && (
+                        <div className="flex justify-between text-xs text-slate-500">
+                          <span>🏠 固定費（未引き落とし）</span>
+                          <span className="text-red-500 font-medium">-{yen(fixedCharge)}</span>
+                        </div>
+                      )}
+                      {incomeForAcc === 0 && cardCharge === 0 && fixedCharge === 0 && (
+                        <p className="text-xs text-slate-400">引き落とし予定なし</p>
+                      )}
+                      <div className={`flex justify-between text-sm font-bold pt-1.5 border-t border-slate-200 ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
+                        <span>月末残高見込み</span>
+                        <span>{isNegative ? '⚠️ ' : ''}{yen(projectedBalance)}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={() => { setBankForm({ id: acc.id, name: acc.name, balance: String(acc.balance), note: acc.note ?? '' }); setShowBankForm(true) }}
+                        className="text-xs text-indigo-600 px-2 py-1 hover:bg-indigo-50 rounded">残高更新</button>
+                      <button onClick={() => deleteAccount(acc.id)} className="text-xs text-red-400 px-2 py-1 hover:bg-red-50 rounded">削除</button>
+                    </div>
+                  </div>
                 )
               })}
-              {showIncomeForm ? (
-                <form onSubmit={saveIncome} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">見込み給料を設定</h2>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-slate-500">対象月</label>
-                      <input type="month" value={incomeForm.month} onChange={(e) => setIncomeForm({ ...incomeForm, month: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" required />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500">金額（円）</label>
-                      <input type="number" placeholder="250000" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" required />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500">入金口座</label>
-                    <select value={incomeForm.bank_account_id} onChange={(e) => setIncomeForm({ ...incomeForm, bank_account_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1">
-                      <option value="">口座を選択</option>
-                      {bankAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                    </select>
-                  </div>
-                  <input type="text" placeholder="メモ（任意）" value={incomeForm.description} onChange={(e) => setIncomeForm({ ...incomeForm, description: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+
+              {showBankForm ? (
+                <form onSubmit={saveBankAccount} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                  <h2 className="text-sm font-semibold">{bankForm.id ? '口座を更新' : '口座を追加'}</h2>
+                  <input type="text" placeholder="口座名（例：楽天銀行）" value={bankForm.name}
+                    onChange={(e) => setBankForm({ ...bankForm, name: e.target.value })}
+                    className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <input type="number" placeholder="現在の残高" value={bankForm.balance}
+                    onChange={(e) => setBankForm({ ...bankForm, balance: e.target.value })}
+                    className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                  <input type="text" placeholder="メモ（任意）" value={bankForm.note}
+                    onChange={(e) => setBankForm({ ...bankForm, note: e.target.value })}
+                    className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => setShowIncomeForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
-                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">追加</button>
+                    <button type="button" onClick={() => setShowBankForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
                   </div>
                 </form>
               ) : (
-                <button onClick={() => setShowIncomeForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 見込み給料を追加</button>
+                <button onClick={() => { setBankForm({ id: '', name: '', balance: '', note: '' }); setShowBankForm(true) }}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 口座を追加</button>
               )}
             </div>
           )}

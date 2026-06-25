@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, amount } = await req.json()
+  const { id, amount, date } = await req.json()
   const { data: txn } = await supabase.from('transactions').select('*').eq('id', id).single()
   if (!txn) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
@@ -89,7 +89,9 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  const { data, error } = await supabase.from('transactions').update({ amount }).eq('id', id).select().single()
+  const updates: Record<string, unknown> = { amount }
+  if (date !== undefined) updates.date = date
+  const { data, error } = await supabase.from('transactions').update(updates).eq('id', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
