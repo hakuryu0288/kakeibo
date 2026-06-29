@@ -124,6 +124,8 @@ export type ExpectedIncome = {
   month: string
   description: string | null
   bank_account_id: string | null
+  is_confirmed: boolean
+  confirmed_at: string | null
   created_at: string
   bank_accounts?: { name: string }
 }

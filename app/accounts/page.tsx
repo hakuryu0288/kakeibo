@@ -52,6 +52,10 @@ export default function AccountsPage() {
   const [incomes, setIncomes] = useState<ExpectedIncome[]>([])
   const [incomeForm, setIncomeForm] = useState({ month: currentMonth(), amount: '', description: '', bank_account_id: '' })
   const [showIncomeForm, setShowIncomeForm] = useState(false)
+  const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null)
+  const [editIncomeForm, setEditIncomeForm] = useState({ month: '', amount: '', description: '', bank_account_id: '' })
+  const [confirmingIncomeId, setConfirmingIncomeId] = useState<string | null>(null)
+  const [undoingIncomeId, setUndoingIncomeId] = useState<string | null>(null)
 
   const fetchAll = () => {
     Promise.all([
@@ -161,6 +165,75 @@ export default function AccountsPage() {
   const deleteIncome = async (id: string) => {
     if (!confirm('削除しますか？')) return
     await fetch(`/api/expected-income?id=${id}`, { method: 'DELETE' })
+    fetchAll()
+  }
+
+  const startEditIncome = (inc: ExpectedIncome) => {
+    setEditingIncomeId(inc.id)
+    setEditIncomeForm({
+      month: inc.month,
+      amount: String(inc.amount),
+      description: inc.description ?? '',
+      bank_account_id: inc.bank_account_id ?? '',
+    })
+  }
+
+  const saveEditIncome = async () => {
+    if (!editingIncomeId) return
+    const amount = parseInt(editIncomeForm.amount)
+    if (isNaN(amount) || amount <= 0) return
+    await fetch('/api/expected-income', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: editingIncomeId,
+        amount,
+        month: editIncomeForm.month,
+        description: editIncomeForm.description || null,
+        bank_account_id: editIncomeForm.bank_account_id || null,
+      }),
+    })
+    setEditingIncomeId(null)
+    fetchAll()
+  }
+
+  const confirmIncome = async (inc: ExpectedIncome) => {
+    await fetch('/api/expected-income', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: inc.id, is_confirmed: true, confirmed_at: new Date().toISOString() }),
+    })
+    if (inc.bank_account_id) {
+      const acc = accounts.find((a) => a.id === inc.bank_account_id)
+      if (acc) {
+        await fetch('/api/bank-accounts', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: inc.bank_account_id, balance: acc.balance + inc.amount }),
+        })
+      }
+    }
+    setConfirmingIncomeId(null)
+    fetchAll()
+  }
+
+  const undoConfirmIncome = async (inc: ExpectedIncome) => {
+    await fetch('/api/expected-income', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: inc.id, is_confirmed: false, confirmed_at: null }),
+    })
+    if (inc.bank_account_id) {
+      const acc = accounts.find((a) => a.id === inc.bank_account_id)
+      if (acc) {
+        await fetch('/api/bank-accounts', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: inc.bank_account_id, balance: acc.balance - inc.amount }),
+        })
+      }
+    }
+    setUndoingIncomeId(null)
     fetchAll()
   }
 
@@ -462,19 +535,125 @@ export default function AccountsPage() {
                 const accName = inc.bank_account_id
                   ? accounts.find((a) => a.id === inc.bank_account_id)?.name
                   : null
-                return (
-                  <div key={inc.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-medium">{inc.month.replace('-', '年')}月</p>
-                      {accName
-                        ? <p className="text-xs text-indigo-500">🏦 {accName}</p>
-                        : <p className="text-xs text-amber-500">口座未設定</p>
-                      }
-                      {inc.description && <p className="text-xs text-slate-400">{inc.description}</p>}
+                const isEditing = editingIncomeId === inc.id
+                const isConfirming = confirmingIncomeId === inc.id
+                const isUndoing = undoingIncomeId === inc.id
+                const confirmed = !!inc.is_confirmed
+
+                if (isEditing) {
+                  return (
+                    <div key={inc.id} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                      <h3 className="text-sm font-semibold text-slate-700">給料を編集</h3>
+                      <div>
+                        <label className="text-xs text-slate-500">対象月</label>
+                        <input type="month" value={editIncomeForm.month}
+                          onChange={(e) => setEditIncomeForm({ ...editIncomeForm, month: e.target.value })}
+                          className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500">金額（円）</label>
+                        <input type="number" value={editIncomeForm.amount}
+                          onChange={(e) => setEditIncomeForm({ ...editIncomeForm, amount: e.target.value })}
+                          className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" autoFocus />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500">入金口座</label>
+                        <select value={editIncomeForm.bank_account_id}
+                          onChange={(e) => setEditIncomeForm({ ...editIncomeForm, bank_account_id: e.target.value })}
+                          className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1">
+                          <option value="">口座を選択</option>
+                          {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      </div>
+                      <input type="text" placeholder="メモ（任意）" value={editIncomeForm.description}
+                        onChange={(e) => setEditIncomeForm({ ...editIncomeForm, description: e.target.value })}
+                        className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditingIncomeId(null)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                        <button onClick={saveEditIncome} className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-green-700">{yen(inc.amount)}</span>
-                      <button onClick={() => deleteIncome(inc.id)} className="text-slate-300 hover:text-red-400">×</button>
+                  )
+                }
+
+                return (
+                  <div key={inc.id} className={`bg-white rounded-xl shadow-sm overflow-hidden ${confirmed ? 'border-l-4 border-green-400' : ''}`}>
+                    <div className="p-3">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium">{inc.month.replace('-', '年')}月</p>
+                            {confirmed && (
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">入金済み ✓</span>
+                            )}
+                          </div>
+                          {accName
+                            ? <p className="text-xs text-indigo-500">🏦 {accName}</p>
+                            : <p className="text-xs text-amber-500">口座未設定</p>
+                          }
+                          {inc.description && <p className="text-xs text-slate-400">{inc.description}</p>}
+                          {inc.confirmed_at && (
+                            <p className="text-xs text-slate-400">{new Date(inc.confirmed_at).toLocaleDateString('ja-JP')} 反映</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-green-700">{yen(inc.amount)}</span>
+                          {!confirmed && (
+                            <>
+                              <button
+                                onClick={() => startEditIncome(inc)}
+                                className="text-slate-400 hover:text-indigo-500 text-base leading-none px-0.5"
+                                title="編集"
+                              >✎</button>
+                              <button
+                                onClick={() => deleteIncome(inc.id)}
+                                className="text-slate-300 hover:text-red-400"
+                                title="削除"
+                              >×</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="px-3 pb-3 border-t border-slate-100 pt-2">
+                      {confirmed ? (
+                        isUndoing ? (
+                          <div className="space-y-2">
+                            <p className="text-xs text-amber-600">⚠ 取り消すと銀行残高から {yen(inc.amount)} が差し引かれます</p>
+                            <div className="flex gap-2">
+                              <button onClick={() => setUndoingIncomeId(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                              <button onClick={() => undoConfirmIncome(inc)} className="flex-1 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-semibold">取り消す</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setUndoingIncomeId(inc.id)} className="text-xs text-slate-400 hover:text-amber-500 w-full text-center py-0.5">
+                            ↩ 入金確定を取り消す
+                          </button>
+                        )
+                      ) : (
+                        isConfirming ? (
+                          <div className="space-y-2">
+                            <p className="text-xs text-slate-600">
+                              {accName
+                                ? `🏦 ${accName} に ${yen(inc.amount)} を加算します`
+                                : '⚠ 口座が未設定のため残高は変わりません（確定記録のみ）'
+                              }
+                            </p>
+                            <div className="flex gap-2">
+                              <button onClick={() => setConfirmingIncomeId(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                              <button onClick={() => confirmIncome(inc)} className="flex-1 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold">確定する</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmingIncomeId(inc.id)}
+                            className="w-full py-2 bg-green-50 text-green-700 rounded-lg text-sm font-semibold border border-green-200 hover:bg-green-100 transition-colors"
+                          >
+                            ✅ 入金を確定する
+                          </button>
+                        )
+                      )}
                     </div>
                   </div>
                 )
