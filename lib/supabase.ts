@@ -196,6 +196,22 @@ export type CashMemo = {
   created_at: string
 }
 
+export type MonthlyClosing = {
+  id: string
+  month: string
+  snapshot: {
+    bank_deltas: Array<{ bank_account_id: string; delta: number; bank_name: string | null }>
+    income_ids: string[]
+    details: {
+      salary: Array<{ income_id: string; description: string | null; amount: number; bank_account_id: string | null; bank_name: string | null }>
+      card_bills: Array<{ credit_card_id: string; card_name: string; amount: number; bank_account_id: string; bank_name: string | null }>
+      fixed_costs: Array<{ fixed_cost_id: string; name: string; amount: number; bank_account_id: string; bank_name: string | null }>
+    }
+  }
+  processed_at: string
+  created_at: string
+}
+
 export type CardMonthlyOverride = {
   id: string
   credit_card_id: string

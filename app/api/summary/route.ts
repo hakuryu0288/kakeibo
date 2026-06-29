@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
     { data: cardOverrides },
     { data: prevCardOverrides },
     { data: nextExpectedIncomes },
+    { data: monthlyClosingData },
   ] = await Promise.all([
     supabase.from('bank_accounts').select('*'),
     supabase.from('credit_cards').select('*'),
@@ -65,17 +66,23 @@ export async function GET(req: NextRequest) {
     supabase.from('card_monthly_overrides').select('*').eq('month', month),
     supabase.from('card_monthly_overrides').select('*').eq('month', prevMonth),
     supabase.from('expected_income').select('*').eq('month', nextMonth),
+    supabase.from('monthly_closings').select('id').eq('month', month).maybeSingle(),
   ])
+
+  // 月次処理済みの場合、給料・先月カード・固定費はすでに銀行残高に反映済みなので計算から除外
+  const isMonthlyProcessed = !!monthlyClosingData
 
   // 銀行残高合計
   const totalBankBalance = (bankAccounts ?? []).reduce((s: number, a: { balance: number }) => s + Number(a.balance), 0)
 
-  // 固定費合計（口座引き落とし）- 当月中は引き落とし済みでも全額含める
-  const totalFixedCosts = (fixedCosts ?? [])
+  // 固定費合計（口座引き落とし）- 月次処理済みならすでに銀行残高に反映済み
+  const totalFixedCosts = isMonthlyProcessed ? 0 : (fixedCosts ?? [])
     .reduce((s: number, f: { amount: number }) => s + f.amount, 0)
 
-  // 見込み給料
-  const totalExpectedIncome = (expectedIncomes ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)
+  // 見込み給料 - 月次処理済みまたは個別確定済みは除外
+  const totalExpectedIncome = isMonthlyProcessed ? 0 : (expectedIncomes ?? [])
+    .filter((e: { is_confirmed: boolean }) => !e.is_confirmed)
+    .reduce((s: number, e: { amount: number }) => s + e.amount, 0)
 
   // 今月カード請求（カードごと）- 手動上書きがあればそれを優先
   const cardCharges: Record<string, number> = {}
@@ -122,7 +129,8 @@ export async function GET(req: NextRequest) {
       prevCardCharges[card.id] = txnTotal - pointTotal
     }
   }
-  const totalPrevCardCharges = Object.values(prevCardCharges).reduce((s, v) => s + v, 0)
+  // 先月カード引き落とし - 月次処理済みならすでに銀行残高に反映済み
+  const totalPrevCardCharges = isMonthlyProcessed ? 0 : Object.values(prevCardCharges).reduce((s, v) => s + v, 0)
   const totalNextExpectedIncome = (nextExpectedIncomes ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0)
 
   // 今月末残高 = 現在残高 + 今月給料 - 先月カード引き落とし - 固定費

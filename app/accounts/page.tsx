@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, ExpectedIncome, CardMonthlyOverride } from '@/lib/supabase'
+import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, ExpectedIncome, CardMonthlyOverride, MonthlyClosing } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -54,8 +54,14 @@ export default function AccountsPage() {
   const [showIncomeForm, setShowIncomeForm] = useState(false)
   const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null)
   const [editIncomeForm, setEditIncomeForm] = useState({ month: '', amount: '', description: '', bank_account_id: '' })
-  const [confirmingIncomeId, setConfirmingIncomeId] = useState<string | null>(null)
-  const [undoingIncomeId, setUndoingIncomeId] = useState<string | null>(null)
+  // 月次処理
+  const [monthlyClosings, setMonthlyClosings] = useState<MonthlyClosing[]>([])
+  const [processingMonth, setProcessingMonth] = useState(currentMonth())
+  const [preview, setPreview] = useState<MonthlyClosing['snapshot'] | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false)
+  const [isRunningProcess, setIsRunningProcess] = useState(false)
+  const [undoConfirm, setUndoConfirm] = useState(false)
 
   const fetchAll = () => {
     Promise.all([
@@ -64,12 +70,14 @@ export default function AccountsPage() {
       fetch('/api/cash').then((r) => r.json()),
       fetch('/api/cash-memos').then((r) => r.json()),
       fetch('/api/expected-income').then((r) => r.json()),
-    ]).then(([b, c, ca, cm, ei]) => {
+      fetch('/api/monthly-closings').then((r) => r.json()),
+    ]).then(([b, c, ca, cm, ei, mc]) => {
       setAccounts(Array.isArray(b) ? b : [])
       setCards(Array.isArray(c) ? c : [])
       setCash(ca?.id ? ca : null)
       setCashMemos(Array.isArray(cm) ? cm : [])
       setIncomes(Array.isArray(ei) ? ei : [])
+      setMonthlyClosings(Array.isArray(mc) ? mc : [])
       setLoading(false)
     })
   }
@@ -197,45 +205,35 @@ export default function AccountsPage() {
     fetchAll()
   }
 
-  const confirmIncome = async (inc: ExpectedIncome) => {
-    await fetch('/api/expected-income', {
-      method: 'PATCH',
+  const loadPreview = async () => {
+    setIsLoadingPreview(true)
+    const data = await fetch(`/api/monthly-closings?month=${processingMonth}&preview=true`).then((r) => r.json())
+    setPreview(data)
+    setShowPreview(true)
+    setIsLoadingPreview(false)
+  }
+
+  const runMonthlyProcess = async () => {
+    setIsRunningProcess(true)
+    await fetch('/api/monthly-closings', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: inc.id, is_confirmed: true, confirmed_at: new Date().toISOString() }),
+      body: JSON.stringify({ month: processingMonth }),
     })
-    if (inc.bank_account_id) {
-      const acc = accounts.find((a) => a.id === inc.bank_account_id)
-      if (acc) {
-        await fetch('/api/bank-accounts', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: inc.bank_account_id, balance: acc.balance + inc.amount }),
-        })
-      }
-    }
-    setConfirmingIncomeId(null)
+    setShowPreview(false)
+    setPreview(null)
+    setIsRunningProcess(false)
     fetchAll()
   }
 
-  const undoConfirmIncome = async (inc: ExpectedIncome) => {
-    await fetch('/api/expected-income', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: inc.id, is_confirmed: false, confirmed_at: null }),
-    })
-    if (inc.bank_account_id) {
-      const acc = accounts.find((a) => a.id === inc.bank_account_id)
-      if (acc) {
-        await fetch('/api/bank-accounts', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: inc.bank_account_id, balance: acc.balance - inc.amount }),
-        })
-      }
-    }
-    setUndoingIncomeId(null)
+  const undoMonthlyProcess = async () => {
+    await fetch(`/api/monthly-closings?month=${processingMonth}`, { method: 'DELETE' })
+    setUndoConfirm(false)
     fetchAll()
   }
+
+  const [processingYear, processingMon] = processingMonth.split('-')
+  const currentClosing = monthlyClosings.find((c) => c.month === processingMonth) ?? null
 
   const totalCardUsage = cards.reduce((sum, card) => {
     const txnTotal = cardTabTxns.filter((t) => t.credit_card_id === card.id).reduce((s, t) => s + t.amount, 0)
@@ -502,6 +500,135 @@ export default function AccountsPage() {
           {/* 給料タブ */}
           {tab === 'income' && (
             <div className="space-y-3">
+              {/* 月次処理カード */}
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                  <h2 className="text-sm font-semibold text-slate-700">月次処理</h2>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => { setProcessingMonth((m) => shiftMonth(m, -1)); setShowPreview(false); setPreview(null); setUndoConfirm(false) }}
+                      className="w-7 h-7 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded text-lg"
+                    >‹</button>
+                    <span className="text-xs text-slate-500 min-w-[72px] text-center">{processingYear}年{processingMon}月</span>
+                    <button
+                      onClick={() => { setProcessingMonth((m) => shiftMonth(m, 1)); setShowPreview(false); setPreview(null); setUndoConfirm(false) }}
+                      className="w-7 h-7 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded text-lg"
+                    >›</button>
+                  </div>
+                </div>
+
+                <div className="p-4">
+                  {currentClosing ? (
+                    undoConfirm ? (
+                      <div className="space-y-3">
+                        <p className="text-xs text-amber-600">⚠ 取り消すと銀行残高の変動が全て元に戻ります</p>
+                        <div className="flex gap-2">
+                          <button onClick={() => setUndoConfirm(false)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
+                          <button onClick={undoMonthlyProcess} className="flex-1 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-semibold">取り消す</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-green-600 font-bold text-base">✓</span>
+                          <span className="text-sm text-slate-700">{new Date(currentClosing.processed_at).toLocaleDateString('ja-JP')} 処理済み</span>
+                        </div>
+                        <div className="space-y-0.5 mb-3 text-xs text-slate-500">
+                          {currentClosing.snapshot.details.salary.map((s) => (
+                            <p key={s.income_id}>給料加算: +{yen(s.amount)}{s.bank_name ? ` → ${s.bank_name}` : ''}</p>
+                          ))}
+                          {currentClosing.snapshot.details.card_bills.map((c) => (
+                            <p key={c.credit_card_id}>カード引き落とし: -{yen(c.amount)} ({c.card_name})</p>
+                          ))}
+                          {currentClosing.snapshot.details.fixed_costs.map((f) => (
+                            <p key={f.fixed_cost_id}>固定費: -{yen(f.amount)} ({f.name})</p>
+                          ))}
+                        </div>
+                        <button onClick={() => setUndoConfirm(true)} className="text-xs text-slate-400 hover:text-amber-500 w-full text-center py-0.5">
+                          ↩ 月次処理を取り消す
+                        </button>
+                      </div>
+                    )
+                  ) : showPreview && preview ? (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold text-slate-600">{processingYear}年{processingMon}月 月次処理プレビュー</p>
+
+                      {preview.details.salary.length > 0 && (
+                        <div>
+                          <p className="text-xs text-slate-400 mb-1">給料加算</p>
+                          {preview.details.salary.map((s) => (
+                            <div key={s.income_id} className="flex justify-between text-xs bg-green-50 rounded px-2 py-1 mb-1">
+                              <span className="text-slate-600">{s.description ?? '給料'}{s.bank_name ? ` → ${s.bank_name}` : ''}</span>
+                              <span className="font-medium text-green-700">+{yen(s.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {preview.details.card_bills.length > 0 && (
+                        <div>
+                          <p className="text-xs text-slate-400 mb-1">先月カード引き落とし</p>
+                          {preview.details.card_bills.map((c) => (
+                            <div key={c.credit_card_id} className="flex justify-between text-xs bg-red-50 rounded px-2 py-1 mb-1">
+                              <span className="text-slate-600">{c.card_name}{c.bank_name ? ` → ${c.bank_name}` : ''}</span>
+                              <span className="font-medium text-red-600">-{yen(c.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {preview.details.fixed_costs.length > 0 && (
+                        <div>
+                          <p className="text-xs text-slate-400 mb-1">今月固定費（口座引落）</p>
+                          {preview.details.fixed_costs.map((f) => (
+                            <div key={f.fixed_cost_id} className="flex justify-between text-xs bg-red-50 rounded px-2 py-1 mb-1">
+                              <span className="text-slate-600">{f.name}{f.bank_name ? ` → ${f.bank_name}` : ''}</span>
+                              <span className="font-medium text-red-600">-{yen(f.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {preview.bank_deltas.length > 0 ? (
+                        <div className="border-t border-slate-100 pt-2">
+                          <p className="text-xs text-slate-400 mb-1">口座変動まとめ</p>
+                          {preview.bank_deltas.map((bd) => (
+                            <div key={bd.bank_account_id} className="flex justify-between text-xs px-2 py-0.5">
+                              <span className="text-slate-600">{bd.bank_name ?? '不明口座'}</span>
+                              <span className={`font-bold ${bd.delta >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                {bd.delta >= 0 ? '+' : ''}{yen(bd.delta)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 text-center py-1">この月に反映する内容がありません</p>
+                      )}
+
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={() => { setShowPreview(false); setPreview(null) }} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                        <button
+                          onClick={runMonthlyProcess}
+                          disabled={isRunningProcess || preview.bank_deltas.length === 0}
+                          className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+                        >
+                          {isRunningProcess ? '処理中...' : '実行する'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={loadPreview}
+                      disabled={isLoadingPreview}
+                      className="w-full py-2.5 bg-green-50 text-green-700 rounded-lg text-sm font-semibold border border-green-200 hover:bg-green-100 transition-colors disabled:opacity-50"
+                    >
+                      {isLoadingPreview ? '計算中...' : '📋 月次処理を確認する'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 見込み給料追加 */}
               {showIncomeForm ? (
                 <form onSubmit={saveIncome} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
                   <h2 className="text-sm font-semibold">見込み給料を設定</h2>
@@ -531,14 +658,14 @@ export default function AccountsPage() {
               ) : (
                 <button onClick={() => setShowIncomeForm(true)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 見込み給料を追加</button>
               )}
+
+              {/* 給料一覧 */}
               {incomes.map((inc) => {
                 const accName = inc.bank_account_id
                   ? accounts.find((a) => a.id === inc.bank_account_id)?.name
                   : null
                 const isEditing = editingIncomeId === inc.id
-                const isConfirming = confirmingIncomeId === inc.id
-                const isUndoing = undoingIncomeId === inc.id
-                const confirmed = !!inc.is_confirmed
+                const processed = !!inc.is_confirmed
 
                 if (isEditing) {
                   return (
@@ -577,83 +704,30 @@ export default function AccountsPage() {
                 }
 
                 return (
-                  <div key={inc.id} className={`bg-white rounded-xl shadow-sm overflow-hidden ${confirmed ? 'border-l-4 border-green-400' : ''}`}>
-                    <div className="p-3">
-                      <div className="flex justify-between items-start">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium">{inc.month.replace('-', '年')}月</p>
-                            {confirmed && (
-                              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">入金済み ✓</span>
-                            )}
-                          </div>
-                          {accName
-                            ? <p className="text-xs text-indigo-500">🏦 {accName}</p>
-                            : <p className="text-xs text-amber-500">口座未設定</p>
-                          }
-                          {inc.description && <p className="text-xs text-slate-400">{inc.description}</p>}
-                          {inc.confirmed_at && (
-                            <p className="text-xs text-slate-400">{new Date(inc.confirmed_at).toLocaleDateString('ja-JP')} 反映</p>
-                          )}
-                        </div>
+                  <div key={inc.id} className={`bg-white rounded-xl p-3 shadow-sm ${processed ? 'border-l-4 border-green-300' : ''}`}>
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-green-700">{yen(inc.amount)}</span>
-                          {!confirmed && (
-                            <>
-                              <button
-                                onClick={() => startEditIncome(inc)}
-                                className="text-slate-400 hover:text-indigo-500 text-base leading-none px-0.5"
-                                title="編集"
-                              >✎</button>
-                              <button
-                                onClick={() => deleteIncome(inc.id)}
-                                className="text-slate-300 hover:text-red-400"
-                                title="削除"
-                              >×</button>
-                            </>
+                          <p className="text-sm font-medium">{inc.month.replace('-', '年')}月</p>
+                          {processed && (
+                            <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">月次処理済み</span>
                           )}
                         </div>
+                        {accName
+                          ? <p className="text-xs text-indigo-500">🏦 {accName}</p>
+                          : <p className="text-xs text-amber-500">口座未設定</p>
+                        }
+                        {inc.description && <p className="text-xs text-slate-400">{inc.description}</p>}
                       </div>
-                    </div>
-
-                    <div className="px-3 pb-3 border-t border-slate-100 pt-2">
-                      {confirmed ? (
-                        isUndoing ? (
-                          <div className="space-y-2">
-                            <p className="text-xs text-amber-600">⚠ 取り消すと銀行残高から {yen(inc.amount)} が差し引かれます</p>
-                            <div className="flex gap-2">
-                              <button onClick={() => setUndoingIncomeId(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
-                              <button onClick={() => undoConfirmIncome(inc)} className="flex-1 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-semibold">取り消す</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button onClick={() => setUndoingIncomeId(inc.id)} className="text-xs text-slate-400 hover:text-amber-500 w-full text-center py-0.5">
-                            ↩ 入金確定を取り消す
-                          </button>
-                        )
-                      ) : (
-                        isConfirming ? (
-                          <div className="space-y-2">
-                            <p className="text-xs text-slate-600">
-                              {accName
-                                ? `🏦 ${accName} に ${yen(inc.amount)} を加算します`
-                                : '⚠ 口座が未設定のため残高は変わりません（確定記録のみ）'
-                              }
-                            </p>
-                            <div className="flex gap-2">
-                              <button onClick={() => setConfirmingIncomeId(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
-                              <button onClick={() => confirmIncome(inc)} className="flex-1 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold">確定する</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmingIncomeId(inc.id)}
-                            className="w-full py-2 bg-green-50 text-green-700 rounded-lg text-sm font-semibold border border-green-200 hover:bg-green-100 transition-colors"
-                          >
-                            ✅ 入金を確定する
-                          </button>
-                        )
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-green-700">{yen(inc.amount)}</span>
+                        {!processed && (
+                          <>
+                            <button onClick={() => startEditIncome(inc)} className="text-slate-400 hover:text-indigo-500 text-base leading-none px-0.5" title="編集">✎</button>
+                            <button onClick={() => deleteIncome(inc.id)} className="text-slate-300 hover:text-red-400" title="削除">×</button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
