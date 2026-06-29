@@ -80,6 +80,7 @@ export default function AssetsPage() {
   const [expectedIncomes, setExpectedIncomes] = useState<ExpectedIncome[]>([])
   const [prevMonthTxns, setPrevMonthTxns] = useState<Transaction[]>([])
   const [prevMonthOverrides, setPrevMonthOverrides] = useState<CardMonthlyOverride[]>([])
+  const [isMonthlyProcessed, setIsMonthlyProcessed] = useState(false)
   const [bankForm, setBankForm] = useState({ id: '', name: '', balance: '', note: '' })
   const [showBankForm, setShowBankForm] = useState(false)
 
@@ -97,7 +98,8 @@ export default function AssetsPage() {
       fetch(`/api/expected-income?month=${today}`).then((r) => r.json()),
       fetch(`/api/transactions?month=${prevMonth}`).then((r) => r.json()),
       fetch(`/api/card-monthly-overrides?month=${prevMonth}`).then((r) => r.json()),
-    ]).then(([ri, ns, pb, ba, cr, fc, ei, prevTxns, prevOverrides]) => {
+      fetch(`/api/monthly-closings?month=${today}`).then((r) => r.json()),
+    ]).then(([ri, ns, pb, ba, cr, fc, ei, prevTxns, prevOverrides, mc]) => {
       setResaleItems(Array.isArray(ri) ? ri : [])
       if (ns?.id) {
         setNisa(ns)
@@ -111,6 +113,7 @@ export default function AssetsPage() {
       setExpectedIncomes(Array.isArray(ei) ? ei : [])
       setPrevMonthTxns(Array.isArray(prevTxns) ? prevTxns.filter((t: Transaction) => t.type === 'expense') : [])
       setPrevMonthOverrides(Array.isArray(prevOverrides) ? prevOverrides : [])
+      setIsMonthlyProcessed(!!(mc && mc.id))
       setLoading(false)
     })
   }
@@ -315,10 +318,10 @@ export default function AssetsPage() {
           {/* 銀行口座タブ */}
           {tab === 'bank' && (
             <div className="space-y-3">
-              {expectedIncomes.filter((e) => !e.bank_account_id).reduce((s, e) => s + e.amount, 0) > 0 && (
+              {expectedIncomes.filter((e) => !e.bank_account_id && !e.is_confirmed).reduce((s, e) => s + e.amount, 0) > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                   <p className="text-xs text-amber-700 font-medium">
-                    ⚠️ 口座未割り当ての給料: +{yen(expectedIncomes.filter((e) => !e.bank_account_id).reduce((s, e) => s + e.amount, 0))}
+                    ⚠️ 口座未割り当ての給料: +{yen(expectedIncomes.filter((e) => !e.bank_account_id && !e.is_confirmed).reduce((s, e) => s + e.amount, 0))}
                   </p>
                   <p className="text-xs text-amber-500 mt-0.5">カード/現金→給料タブで入金口座を設定してください</p>
                 </div>
@@ -349,11 +352,12 @@ export default function AssetsPage() {
               {bankAccounts.map((acc) => {
                 const cardsForAcc = cards.filter((c) => c.bank_account_id === acc.id)
 
-                const incomeForAcc = expectedIncomes
-                  .filter((e) => e.bank_account_id === acc.id)
+                // 月次処理済みの場合、給料・カード・固定費はすでに残高に反映済み
+                const incomeForAcc = isMonthlyProcessed ? 0 : expectedIncomes
+                  .filter((e) => e.bank_account_id === acc.id && !e.is_confirmed)
                   .reduce((s, e) => s + e.amount, 0)
 
-                const cardCharge = (() => {
+                const cardCharge = isMonthlyProcessed ? 0 : (() => {
                   let total = 0
                   for (const card of cardsForAcc) {
                     const override = prevMonthOverrides.find((o) => o.credit_card_id === card.id)
@@ -368,7 +372,7 @@ export default function AssetsPage() {
                   return total
                 })()
 
-                const fixedCharge = fixedCosts
+                const fixedCharge = isMonthlyProcessed ? 0 : fixedCosts
                   .filter((f) => f.is_active && f.bank_account_id === acc.id)
                   .reduce((s, f) => s + f.amount, 0)
 
@@ -406,10 +410,12 @@ export default function AssetsPage() {
                         </div>
                       )}
                       {incomeForAcc === 0 && cardCharge === 0 && fixedCharge === 0 && (
-                        <p className="text-xs text-slate-400">引き落とし予定なし</p>
+                        isMonthlyProcessed
+                          ? <p className="text-xs text-green-600">✓ 今月の月次処理反映済み</p>
+                          : <p className="text-xs text-slate-400">引き落とし予定なし</p>
                       )}
                       <div className={`flex justify-between text-sm font-bold pt-1.5 border-t border-slate-200 ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
-                        <span>月末残高見込み</span>
+                        <span>{isMonthlyProcessed ? '現在の残高' : '月末残高見込み'}</span>
                         <span>{isNegative ? '⚠️ ' : ''}{yen(projectedBalance)}</span>
                       </div>
                     </div>
