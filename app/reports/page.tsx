@@ -34,7 +34,7 @@ export default function ReportsPage() {
   const [allTxns, setAllTxns] = useState<Record<string, Transaction[]>>({})
   const [allExpectedIncomes, setAllExpectedIncomes] = useState<Record<string, ExpectedIncome[]>>({})
   const [loading, setLoading] = useState(true)
-  const [detailTab, setDetailTab] = useState<'category' | 'card'>('category')
+  const [detailTab, setDetailTab] = useState<'category' | 'card' | 'income'>('category')
 
   const months = useMemo(() => getYearMonths(selectedYear), [selectedYear])
 
@@ -115,6 +115,26 @@ export default function ReportsPage() {
 
   const maxExpense = Math.max(...monthlySummaries.map((s) => s.expense), 1)
   const [year, mon] = selectedMonth ? selectedMonth.split('-') : ['', '']
+
+  const incomeCatBreakdown = categories
+    .filter((c) => c.type === 'income')
+    .map((cat) => ({
+      category: cat,
+      total: selectedTxns.filter((t) => t.type === 'income' && t.category_id === cat.id).reduce((s, t) => s + t.amount, 0),
+    }))
+    .filter((cb) => cb.total > 0)
+    .sort((a, b) => b.total - a.total)
+
+  const yearIncomeByCategory = categories
+    .filter((c) => c.type === 'income')
+    .map((cat) => ({
+      category: cat,
+      total: months.reduce((sum, m) => {
+        return sum + (allTxns[m] ?? []).filter((t) => t.type === 'income' && t.category_id === cat.id).reduce((s, t) => s + t.amount, 0)
+      }, 0),
+    }))
+    .filter((cb) => cb.total > 0)
+    .sort((a, b) => b.total - a.total)
 
   return (
     <div className="space-y-4">
@@ -248,39 +268,12 @@ export default function ReportsPage() {
               </div>
             </div>
 
-            {/* 給与・見込み収入の内訳 */}
-            {selectedExpectedIncomes.length > 0 && (
-              <div className="mb-4 p-3 bg-green-50 rounded-lg">
-                <p className="text-xs font-semibold text-green-700 mb-2">給与・見込み収入</p>
-                <div className="space-y-1.5">
-                  {selectedExpectedIncomes.map((e) => (
-                    <div key={e.id} className="flex justify-between items-center text-xs">
-                      <span className="text-slate-600">{e.description ?? '給与'}</span>
-                      <span className="font-medium text-green-700">{formatYen(e.amount)}</span>
-                    </div>
-                  ))}
-                  {selectedExpectedIncomes.length > 1 && (
-                    <div className="flex justify-between text-xs font-bold pt-1 border-t border-green-200">
-                      <span className="text-green-700">合計</span>
-                      <span className="text-green-700">{formatYen(selectedSummary.salaryIncome)}</span>
-                    </div>
-                  )}
-                </div>
-                {selectedSummary.txnIncome > 0 && (
-                  <div className="flex justify-between text-xs mt-2 pt-2 border-t border-green-200">
-                    <span className="text-slate-500">収入取引</span>
-                    <span className="text-green-600">{formatYen(selectedSummary.txnIncome)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* カテゴリ別 / カード別 タブ */}
+            {/* カテゴリ別 / カード別 / 収入内訳 タブ */}
             <div className="flex gap-1 mb-3">
-              {(['category', 'card'] as const).map((t) => (
+              {(['category', 'card', 'income'] as const).map((t) => (
                 <button key={t} onClick={() => setDetailTab(t)}
                   className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${detailTab === t ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                  {t === 'category' ? 'カテゴリ別' : 'カード別'}
+                  {t === 'category' ? 'カテゴリ別' : t === 'card' ? 'カード別' : '収入内訳'}
                 </button>
               ))}
             </div>
@@ -340,6 +333,66 @@ export default function ReportsPage() {
                 </div>
               )
             )}
+
+            {detailTab === 'income' && (
+              <div className="space-y-3">
+                {selectedExpectedIncomes.length === 0 && incomeCatBreakdown.length === 0 && selectedSummary.txnIncome === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-4">収入データなし</p>
+                ) : (
+                  <>
+                    {selectedExpectedIncomes.length > 0 && (
+                      <div className="p-3 bg-green-50 rounded-lg">
+                        <p className="text-xs font-semibold text-green-700 mb-2">給与・見込み収入</p>
+                        <div className="space-y-1.5">
+                          {selectedExpectedIncomes.map((e) => (
+                            <div key={e.id} className="flex justify-between items-center text-xs">
+                              <span className="text-slate-600">{e.description ?? '給与'}</span>
+                              <span className="font-medium text-green-700">{formatYen(e.amount)}</span>
+                            </div>
+                          ))}
+                          {selectedExpectedIncomes.length > 1 && (
+                            <div className="flex justify-between text-xs font-bold pt-1 border-t border-green-200">
+                              <span className="text-green-700">合計</span>
+                              <span className="text-green-700">{formatYen(selectedSummary.salaryIncome)}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {incomeCatBreakdown.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-600 mb-2">収入取引（カテゴリ別）</p>
+                        <div className="space-y-2">
+                          {incomeCatBreakdown.map((cb) => {
+                            const pct = selectedSummary.income > 0 ? (cb.total / selectedSummary.income) * 100 : 0
+                            return (
+                              <div key={cb.category.id}>
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span>{cb.category.icon} {cb.category.name}</span>
+                                  <span className="flex gap-2">
+                                    <span className="text-slate-400">{formatNumber(pct)}%</span>
+                                    <span className="text-green-600 font-medium">{formatYen(cb.total)}</span>
+                                  </span>
+                                </div>
+                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: cb.category.color }} />
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {selectedSummary.txnIncome > 0 && incomeCatBreakdown.length === 0 && (
+                      <div className="flex justify-between text-xs p-2 bg-slate-50 rounded-lg">
+                        <span className="text-slate-600">その他収入（カテゴリなし）</span>
+                        <span className="text-green-600 font-medium">{formatYen(selectedSummary.txnIncome)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* カード別年間使用額 */}
@@ -372,6 +425,39 @@ export default function ReportsPage() {
                     </div>
                   )
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* 年間収入内訳 */}
+          {(yearTotal.salary > 0 || yearIncomeByCategory.length > 0) && (
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-700 mb-3">収入内訳（{selectedYear}年）</h2>
+              <div className="space-y-3">
+                {yearTotal.salary > 0 && (
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0" />
+                      <span className="text-sm font-medium">給与・見込み収入</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-green-600">{formatYen(yearTotal.salary)}</p>
+                      <p className="text-xs text-slate-400">月平均 {formatYen(Math.round(yearTotal.salary / Math.max(months.length, 1)))}</p>
+                    </div>
+                  </div>
+                )}
+                {yearIncomeByCategory.map((cb) => (
+                  <div key={cb.category.id} className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cb.category.color }} />
+                      <span className="text-sm font-medium">{cb.category.icon} {cb.category.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-green-600">{formatYen(cb.total)}</p>
+                      <p className="text-xs text-slate-400">月平均 {formatYen(Math.round(cb.total / Math.max(months.length, 1)))}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

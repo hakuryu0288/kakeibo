@@ -214,9 +214,12 @@ export default function AssetsPage() {
                 <p className="text-xs text-indigo-600">商材評価額合計（売価ベース）</p>
                 <p className="text-2xl font-bold text-indigo-700">{yen(totalResaleValue)}</p>
               </div>
-              {showResaleForm ? (
+              {!(showResaleForm && !editResaleId) && (
+                <button onClick={() => { setResaleForm(defaultResaleForm); setEditResaleId(null); setShowResaleForm(true) }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 商材を追加</button>
+              )}
+              {showResaleForm && !editResaleId && (
                 <form onSubmit={saveResale} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">{editResaleId ? '編集' : '商材を追加'}</h2>
+                  <h2 className="text-sm font-semibold">商材を追加</h2>
                   <input type="text" placeholder="商品名" value={resaleForm.name} onChange={(e) => setResaleForm({ ...resaleForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
                   <div className="grid grid-cols-3 gap-2">
                     <input type="number" placeholder="個数" value={resaleForm.quantity} min={1} onChange={(e) => setResaleForm({ ...resaleForm, quantity: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
@@ -228,27 +231,41 @@ export default function AssetsPage() {
                     <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
                   </div>
                 </form>
-              ) : (
-                <button onClick={() => { setResaleForm(defaultResaleForm); setEditResaleId(null); setShowResaleForm(true) }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 商材を追加</button>
               )}
               <div className="space-y-2">
                 {resaleItems.map((item) => (
-                  <div key={item.id} className="bg-white rounded-xl p-3 shadow-sm">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{item.name}</p>
-                        <p className="text-xs text-slate-400">
-                          {item.quantity}個　仕入 {yen(item.purchase_price)}/個
-                          {item.sell_price != null ? `　売値 ${yen(item.sell_price)}/個` : ''}
-                        </p>
+                  editResaleId === item.id && showResaleForm ? (
+                    <form key={item.id} onSubmit={saveResale} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                      <h2 className="text-sm font-semibold">商材を編集</h2>
+                      <input type="text" placeholder="商品名" value={resaleForm.name} onChange={(e) => setResaleForm({ ...resaleForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                      <div className="grid grid-cols-3 gap-2">
+                        <input type="number" placeholder="個数" value={resaleForm.quantity} min={1} onChange={(e) => setResaleForm({ ...resaleForm, quantity: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                        <input type="number" placeholder="仕入れ額/個" value={resaleForm.purchase_price} onChange={(e) => setResaleForm({ ...resaleForm, purchase_price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                        <input type="number" placeholder="売値/個" value={resaleForm.sell_price} onChange={(e) => setResaleForm({ ...resaleForm, sell_price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
                       </div>
-                      <p className="text-sm font-bold">{yen((item.sell_price ?? item.purchase_price) * item.quantity)}</p>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => { setShowResaleForm(false); setEditResaleId(null); setResaleForm(defaultResaleForm) }} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                        <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div key={item.id} className="bg-white rounded-xl p-3 shadow-sm">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{item.name}</p>
+                          <p className="text-xs text-slate-400">
+                            {item.quantity}個　仕入 {yen(item.purchase_price)}/個
+                            {item.sell_price != null ? `　売値 ${yen(item.sell_price)}/個` : ''}
+                          </p>
+                        </div>
+                        <p className="text-sm font-bold">{yen((item.sell_price ?? item.purchase_price) * item.quantity)}</p>
+                      </div>
+                      <div className="flex gap-2 mt-1">
+                        <button onClick={() => { setResaleForm({ name: item.name, quantity: String(item.quantity), purchase_price: String(item.purchase_price), sell_price: item.sell_price ? String(item.sell_price) : '' }); setEditResaleId(item.id); setShowResaleForm(true) }} className="text-xs text-indigo-600 px-2 py-1 hover:bg-indigo-50 rounded">編集</button>
+                        <button onClick={() => deleteResale(item.id)} className="text-xs text-red-400 px-2 py-1 hover:bg-red-50 rounded">削除</button>
+                      </div>
                     </div>
-                    <div className="flex gap-2 mt-1">
-                      <button onClick={() => { setResaleForm({ name: item.name, quantity: String(item.quantity), purchase_price: String(item.purchase_price), sell_price: item.sell_price ? String(item.sell_price) : '' }); setEditResaleId(item.id); setShowResaleForm(true) }} className="text-xs text-indigo-600 px-2 py-1 hover:bg-indigo-50 rounded">編集</button>
-                      <button onClick={() => deleteResale(item.id)} className="text-xs text-red-400 px-2 py-1 hover:bg-red-50 rounded">削除</button>
-                    </div>
-                  </div>
+                  )
                 ))}
               </div>
             </div>
@@ -287,9 +304,12 @@ export default function AssetsPage() {
                 <p className="text-2xl font-bold text-yellow-700">{totalPoints.toLocaleString('ja-JP')} pt</p>
                 <p className="text-xs text-yellow-500">≒ {yen(totalPoints)}</p>
               </div>
-              {showPointForm ? (
+              {!(showPointForm && !editPointId) && (
+                <button onClick={() => { setPointForm({ name: '', balance: '' }); setEditPointId(null); setShowPointForm(true) }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ ポイントを追加</button>
+              )}
+              {showPointForm && !editPointId && (
                 <form onSubmit={savePoint} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">{editPointId ? 'ポイントを編集' : 'ポイントを追加'}</h2>
+                  <h2 className="text-sm font-semibold">ポイントを追加</h2>
                   <input type="text" placeholder="ポイント名（例：楽天ポイント）" value={pointForm.name} onChange={(e) => setPointForm({ ...pointForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
                   <input type="number" placeholder="残高（ポイント数）" value={pointForm.balance} onChange={(e) => setPointForm({ ...pointForm, balance: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
                   <div className="flex gap-2">
@@ -297,20 +317,30 @@ export default function AssetsPage() {
                     <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
                   </div>
                 </form>
-              ) : (
-                <button onClick={() => { setPointForm({ name: '', balance: '' }); setEditPointId(null); setShowPointForm(true) }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ ポイントを追加</button>
               )}
               {points.map((p) => (
-                <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
-                  <div>
-                    <p className="text-sm font-medium">{p.name}</p>
-                    <p className="text-lg font-bold text-slate-700">{p.balance.toLocaleString('ja-JP')} pt</p>
+                editPointId === p.id && showPointForm ? (
+                  <form key={p.id} onSubmit={savePoint} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                    <h2 className="text-sm font-semibold">ポイントを編集</h2>
+                    <input type="text" placeholder="ポイント名（例：楽天ポイント）" value={pointForm.name} onChange={(e) => setPointForm({ ...pointForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                    <input type="number" placeholder="残高（ポイント数）" value={pointForm.balance} onChange={(e) => setPointForm({ ...pointForm, balance: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => { setShowPointForm(false); setEditPointId(null); setPointForm({ name: '', balance: '' }) }} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                      <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
+                    </div>
+                  </form>
+                ) : (
+                  <div key={p.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium">{p.name}</p>
+                      <p className="text-lg font-bold text-slate-700">{p.balance.toLocaleString('ja-JP')} pt</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setPointForm({ name: p.name, balance: String(p.balance) }); setEditPointId(p.id); setShowPointForm(true) }} className="text-xs text-indigo-600 px-2 py-1 hover:bg-indigo-50 rounded">編集</button>
+                      <button onClick={() => deletePoint(p.id)} className="text-xs text-red-400 px-2 py-1 hover:bg-red-50 rounded">削除</button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => { setPointForm({ name: p.name, balance: String(p.balance) }); setEditPointId(p.id); setShowPointForm(true) }} className="text-xs text-indigo-600 px-2 py-1 hover:bg-indigo-50 rounded">編集</button>
-                    <button onClick={() => deletePoint(p.id)} className="text-xs text-red-400 px-2 py-1 hover:bg-red-50 rounded">削除</button>
-                  </div>
-                </div>
+                )
               ))}
             </div>
           )}
