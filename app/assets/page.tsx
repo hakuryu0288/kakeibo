@@ -357,9 +357,13 @@ export default function AssetsPage() {
                 </div>
               )}
 
-              {showBankForm ? (
+              {!(showBankForm && !bankForm.id) && (
+                <button onClick={() => { setBankForm({ id: '', name: '', balance: '', note: '' }); setShowBankForm(true) }}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 口座を追加</button>
+              )}
+              {showBankForm && !bankForm.id && (
                 <form onSubmit={saveBankAccount} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                  <h2 className="text-sm font-semibold">{bankForm.id ? '口座を更新' : '口座を追加'}</h2>
+                  <h2 className="text-sm font-semibold">口座を追加</h2>
                   <input type="text" placeholder="口座名（例：楽天銀行）" value={bankForm.name}
                     onChange={(e) => setBankForm({ ...bankForm, name: e.target.value })}
                     className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
@@ -374,9 +378,6 @@ export default function AssetsPage() {
                     <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
                   </div>
                 </form>
-              ) : (
-                <button onClick={() => { setBankForm({ id: '', name: '', balance: '', note: '' }); setShowBankForm(true) }}
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold">＋ 口座を追加</button>
               )}
 
               {bankAccounts.map((acc) => {
@@ -409,6 +410,27 @@ export default function AssetsPage() {
                 const totalDeductions = cardCharge + fixedCharge
                 const projectedBalance = Number(acc.balance) + incomeForAcc - totalDeductions
                 const isNegative = projectedBalance < 0
+
+                if (showBankForm && bankForm.id === acc.id) {
+                  return (
+                    <form key={acc.id} onSubmit={saveBankAccount} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                      <h2 className="text-sm font-semibold">残高を更新</h2>
+                      <input type="text" placeholder="口座名（例：楽天銀行）" value={bankForm.name}
+                        onChange={(e) => setBankForm({ ...bankForm, name: e.target.value })}
+                        className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                      <input type="number" placeholder="現在の残高" value={bankForm.balance}
+                        onChange={(e) => setBankForm({ ...bankForm, balance: e.target.value })}
+                        className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
+                      <input type="text" placeholder="メモ（任意）" value={bankForm.note}
+                        onChange={(e) => setBankForm({ ...bankForm, note: e.target.value })}
+                        className="w-full border border-slate-200 rounded-lg p-2 text-sm" />
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setShowBankForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                        <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">保存</button>
+                      </div>
+                    </form>
+                  )
+                }
 
                 return (
                   <div key={acc.id} className="bg-white rounded-xl p-4 shadow-sm">
