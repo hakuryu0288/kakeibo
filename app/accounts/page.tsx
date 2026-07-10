@@ -170,6 +170,12 @@ export default function AccountsPage() {
     fetchCashTabData()
   }
 
+  const deleteCashTxn = async (txnId: string) => {
+    if (!confirm('この取引を削除しますか？')) return
+    await fetch(`/api/transactions?id=${txnId}`, { method: 'DELETE' })
+    fetchCashTabData()
+  }
+
   const saveOverride = async (cardId: string) => {
     const amount = parseInt(overrideInput)
     if (isNaN(amount)) return
@@ -543,12 +549,15 @@ export default function AccountsPage() {
                                 <button onClick={() => setEditingCashTxnId(null)} className="text-xs text-slate-400">×</button>
                               </div>
                             ) : (
-                              <button
-                                onClick={() => { setEditingCashTxnId(t.id); setEditCashAmount(String(t.amount)); setEditCashDate(t.date) }}
-                                className={`text-sm font-bold shrink-0 hover:bg-slate-50 rounded px-1 ${t.type === 'income' ? 'text-green-600' : 'text-red-500'}`}
-                              >
-                                {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
-                              </button>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  onClick={() => { setEditingCashTxnId(t.id); setEditCashAmount(String(t.amount)); setEditCashDate(t.date) }}
+                                  className={`text-sm font-bold hover:bg-slate-50 rounded px-1 ${t.type === 'income' ? 'text-green-600' : 'text-red-500'}`}
+                                >
+                                  {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                                </button>
+                                <button onClick={() => deleteCashTxn(t.id)} className="text-slate-300 hover:text-red-400 text-lg leading-none px-0.5">×</button>
+                              </div>
                             )}
                           </div>
                         ))}
