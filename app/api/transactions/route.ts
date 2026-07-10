@@ -66,32 +66,37 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, amount, date } = await req.json()
+  const { id, amount, date, category_id } = await req.json()
   const { data: txn } = await supabase.from('transactions').select('*').eq('id', id).single()
   if (!txn) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
-  const diff = amount - txn.amount
-  if (txn.type === 'income') {
-    if (txn.bank_account_id) {
-      const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', txn.bank_account_id).single()
-      if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + diff }).eq('id', txn.bank_account_id)
-    } else {
-      const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-      if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + diff }).eq('id', cash.id)
-    }
-  } else if (txn.type === 'expense') {
-    if (txn.point_balance_id) {
-      const { data: pb } = await supabase.from('point_balances').select('id, balance').eq('id', txn.point_balance_id).single()
-      if (pb) await supabase.from('point_balances').update({ balance: Number(pb.balance) - diff }).eq('id', pb.id)
-    } else if (!txn.credit_card_id) {
-      const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-      if (cash) await supabase.from('cash_balance').update({ amount: cash.amount - diff }).eq('id', cash.id)
+  // 金額が変更される場合のみ残高を再計算する
+  if (amount !== undefined && amount !== txn.amount) {
+    const diff = amount - txn.amount
+    if (txn.type === 'income') {
+      if (txn.bank_account_id) {
+        const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', txn.bank_account_id).single()
+        if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + diff }).eq('id', txn.bank_account_id)
+      } else {
+        const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
+        if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + diff }).eq('id', cash.id)
+      }
+    } else if (txn.type === 'expense') {
+      if (txn.point_balance_id) {
+        const { data: pb } = await supabase.from('point_balances').select('id, balance').eq('id', txn.point_balance_id).single()
+        if (pb) await supabase.from('point_balances').update({ balance: Number(pb.balance) - diff }).eq('id', pb.id)
+      } else if (!txn.credit_card_id) {
+        const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
+        if (cash) await supabase.from('cash_balance').update({ amount: cash.amount - diff }).eq('id', cash.id)
+      }
     }
   }
 
-  const updates: Record<string, unknown> = { amount }
+  const updates: Record<string, unknown> = {}
+  if (amount !== undefined) updates.amount = amount
   if (date !== undefined) updates.date = date
-  const { data, error } = await supabase.from('transactions').update(updates).eq('id', id).select().single()
+  if (category_id !== undefined) updates.category_id = category_id
+  const { data, error } = await supabase.from('transactions').update(updates).eq('id', id).select('*, categories(*), credit_cards(name, color), bank_accounts(name), point_balances(name)').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }

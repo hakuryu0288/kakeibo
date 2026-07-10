@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, ExpectedIncome, CardMonthlyOverride, MonthlyClosing } from '@/lib/supabase'
+import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, ExpectedIncome, CardMonthlyOverride, MonthlyClosing, Category } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -24,6 +24,7 @@ export default function AccountsPage() {
 
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [cash, setCash] = useState<CashBalance | null>(null)
   const [cashMemos, setCashMemos] = useState<CashMemo[]>([])
   const [cardTabTxns, setCardTabTxns] = useState<Transaction[]>([])
@@ -47,6 +48,9 @@ export default function AccountsPage() {
   const [cashMonth, setCashMonth] = useState(today)
   const [cashTxns, setCashTxns] = useState<Transaction[]>([])
   const [cashMonthYear, cashMonthMon] = cashMonth.split('-')
+  const [editingCashTxnId, setEditingCashTxnId] = useState<string | null>(null)
+  const [editCashAmount, setEditCashAmount] = useState('')
+  const [editCashDate, setEditCashDate] = useState('')
 
   // 給料タブ
   const [incomes, setIncomes] = useState<ExpectedIncome[]>([])
@@ -71,13 +75,15 @@ export default function AccountsPage() {
       fetch('/api/cash-memos').then((r) => r.json()),
       fetch('/api/expected-income').then((r) => r.json()),
       fetch('/api/monthly-closings').then((r) => r.json()),
-    ]).then(([b, c, ca, cm, ei, mc]) => {
+      fetch('/api/categories').then((r) => r.json()),
+    ]).then(([b, c, ca, cm, ei, mc, cats]) => {
       setAccounts(Array.isArray(b) ? b : [])
       setCards(Array.isArray(c) ? c : [])
       setCash(ca?.id ? ca : null)
       setCashMemos(Array.isArray(cm) ? cm : [])
       setIncomes(Array.isArray(ei) ? ei : [])
       setMonthlyClosings(Array.isArray(mc) ? mc : [])
+      setCategories(Array.isArray(cats) ? cats : [])
       setLoading(false)
     })
   }
@@ -140,6 +146,27 @@ export default function AccountsPage() {
     setEditingTxnId(null)
     setTxnAmountInput('')
     fetchCardTabData()
+    fetchCashTabData()
+  }
+
+  const saveCashTxnEdit = async (txnId: string) => {
+    const amount = parseInt(editCashAmount)
+    if (isNaN(amount) || amount <= 0) return
+    await fetch('/api/transactions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: txnId, amount, date: editCashDate }),
+    })
+    setEditingCashTxnId(null)
+    fetchCashTabData()
+  }
+
+  const changeCashTxnCategory = async (txnId: string, categoryId: string) => {
+    await fetch('/api/transactions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: txnId, category_id: categoryId || null }),
+    })
     fetchCashTabData()
   }
 
@@ -476,17 +503,53 @@ export default function AccountsPage() {
                     <>
                       <div className="divide-y divide-slate-100">
                         {cashTxns.map((t) => (
-                          <div key={t.id} className="flex justify-between items-center px-4 py-2.5 gap-2">
+                          <div key={t.id} className="flex justify-between items-start px-4 py-2.5 gap-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <span className="text-base shrink-0">{t.categories?.icon ?? (t.type === 'income' ? '💰' : '💴')}</span>
                               <div className="min-w-0">
                                 <p className="text-xs font-medium">{t.categories?.name ?? 'その他'}</p>
-                                <p className="text-xs text-slate-400 truncate">{t.date}{t.memo ? '　' + t.memo : ''}</p>
+                                {editingCashTxnId === t.id ? (
+                                  <input
+                                    type="date"
+                                    value={editCashDate}
+                                    onChange={(e) => setEditCashDate(e.target.value)}
+                                    className="border border-indigo-300 rounded px-1 py-0.5 text-xs mt-0.5"
+                                  />
+                                ) : (
+                                  <p className="text-xs text-slate-400 truncate">{t.date}{t.memo ? '　' + t.memo : ''}</p>
+                                )}
+                                <select
+                                  value={t.category_id ?? ''}
+                                  onChange={(e) => changeCashTxnCategory(t.id, e.target.value)}
+                                  className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1"
+                                >
+                                  <option value="">カテゴリなし</option>
+                                  {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                                </select>
                               </div>
                             </div>
-                            <span className={`text-sm font-bold shrink-0 ${t.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
-                              {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
-                            </span>
+                            {editingCashTxnId === t.id ? (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <input
+                                  type="number"
+                                  value={editCashAmount}
+                                  onChange={(e) => setEditCashAmount(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') saveCashTxnEdit(t.id); if (e.key === 'Escape') setEditingCashTxnId(null) }}
+                                  className="w-20 border border-indigo-300 rounded px-2 py-0.5 text-sm text-right bg-white"
+                                  autoFocus
+                                  min={1}
+                                />
+                                <button onClick={() => saveCashTxnEdit(t.id)} className="text-xs text-indigo-600 font-semibold">保存</button>
+                                <button onClick={() => setEditingCashTxnId(null)} className="text-xs text-slate-400">×</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => { setEditingCashTxnId(t.id); setEditCashAmount(String(t.amount)); setEditCashDate(t.date) }}
+                                className={`text-sm font-bold shrink-0 hover:bg-slate-50 rounded px-1 ${t.type === 'income' ? 'text-green-600' : 'text-red-500'}`}
+                              >
+                                {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>

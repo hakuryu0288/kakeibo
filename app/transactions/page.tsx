@@ -114,6 +114,16 @@ export default function TransactionsPage() {
     fetchData()
   }
 
+  // 取引のカテゴリを後から変更する
+  const handleCategoryChange = async (id: string, categoryId: string) => {
+    await fetch('/api/transactions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, category_id: categoryId || null }),
+    })
+    fetchData()
+  }
+
   const cardUsage = cards.map((card) => ({
     card,
     total: transactions
@@ -281,6 +291,14 @@ export default function TransactionsPage() {
                       {t.point_balances ? ` · ⭐ ${t.point_balances.name}` : ''}
                       {t.memo ? `　${t.memo}` : ''}
                     </p>
+                    <select
+                      value={t.category_id ?? ''}
+                      onChange={(e) => handleCategoryChange(t.id, e.target.value)}
+                      className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1"
+                    >
+                      <option value="">カテゴリなし</option>
+                      {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                    </select>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
