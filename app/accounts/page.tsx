@@ -527,7 +527,7 @@ export default function AccountsPage() {
                                 <select
                                   value={t.category_id ?? ''}
                                   onChange={(e) => changeCashTxnCategory(t.id, e.target.value)}
-                                  className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1"
+                                  className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1 max-w-full"
                                 >
                                   <option value="">カテゴリなし</option>
                                   {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}

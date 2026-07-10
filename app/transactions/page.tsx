@@ -279,12 +279,12 @@ export default function TransactionsPage() {
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="divide-y divide-slate-100">
             {transactions.map((t) => (
-              <div key={t.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-3">
+              <div key={t.id} className="flex items-center justify-between px-4 py-3 gap-2">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <span className="text-xl">{t.categories?.icon ?? '📦'}</span>
-                  <div>
-                    <p className="text-sm font-medium">{t.categories?.name ?? 'その他'}</p>
-                    <p className="text-xs text-slate-400">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{t.categories?.name ?? 'その他'}</p>
+                    <p className="text-xs text-slate-400 truncate">
                       {t.date}
                       {t.credit_cards ? ` · 💳 ${t.credit_cards.name}` : ''}
                       {t.bank_accounts ? ` · 🏦 ${t.bank_accounts.name}` : ''}
@@ -294,14 +294,14 @@ export default function TransactionsPage() {
                     <select
                       value={t.category_id ?? ''}
                       onChange={(e) => handleCategoryChange(t.id, e.target.value)}
-                      className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1"
+                      className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1 max-w-full"
                     >
                       <option value="">カテゴリなし</option>
                       {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                     </select>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   {editingId === t.id ? (
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       <input

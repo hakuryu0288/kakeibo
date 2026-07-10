@@ -272,20 +272,20 @@ export default function PlansPage() {
                   )
                 }
                 return (
-                  <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-start">
-                    <div>
-                      <p className="text-sm font-medium">{s.name}</p>
-                      <p className="text-xs text-slate-400">毎月{s.billing_day}日　{s.credit_cards?.name ?? 'カードなし'}</p>
+                  <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{s.name}</p>
+                      <p className="text-xs text-slate-400 truncate">毎月{s.billing_day}日　{s.credit_cards?.name ?? 'カードなし'}</p>
                       <select
                         value={s.category_id ?? ''}
                         onChange={(e) => patch('/api/subscriptions', { id: s.id, category_id: e.target.value || null })}
-                        className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1"
+                        className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1 max-w-full"
                       >
                         <option value="">カテゴリなし</option>
                         {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                       </select>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <span className="text-sm font-bold">{yen(s.amount)}</span>
                       {s.credit_card_id && (
                         isPastDay ? (
