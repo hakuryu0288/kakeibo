@@ -111,7 +111,7 @@ export default function InvestmentsPage() {
       (Array.isArray(data) ? data : []).map(async (inv) => {
         let currentPrice: number | null = inv.manual_price
 
-        if (!currentPrice) {
+        if (currentPrice == null) {
           const cached = priceCache[inv.ticker]
           if (cached && Date.now() - cached.fetchedAt < 3600000) {
             currentPrice = cached.price
@@ -130,13 +130,14 @@ export default function InvestmentsPage() {
           }
         }
 
+        const effectiveRate = rate ?? 150
         let priceInJpy = currentPrice
-        if (currentPrice && inv.currency === 'USD' && rate) {
-          priceInJpy = currentPrice * rate
+        if (currentPrice != null && inv.currency === 'USD') {
+          priceInJpy = currentPrice * effectiveRate
         }
 
-        const purchasePriceJpy = inv.currency === 'USD' && rate
-          ? inv.purchase_price * rate
+        const purchasePriceJpy = inv.currency === 'USD'
+          ? inv.purchase_price * effectiveRate
           : inv.purchase_price
 
         const marketValue = priceInJpy != null ? priceInJpy * inv.shares : null
@@ -282,12 +283,12 @@ export default function InvestmentsPage() {
             <div>
               <label className="text-xs text-slate-500">保有口数/株数</label>
               <input type="number" value={form.shares} onChange={(e) => setForm({ ...form, shares: e.target.value })}
-                className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" placeholder="10" step="0.001" required />
+                className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" placeholder="10" step="0.001" min="0.001" required />
             </div>
             <div>
               <label className="text-xs text-slate-500">取得単価</label>
               <input type="number" value={form.purchase_price} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })}
-                className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" placeholder="50000" step="0.01" required />
+                className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" placeholder="50000" step="0.01" min="0" required />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -308,7 +309,7 @@ export default function InvestmentsPage() {
           <div>
             <label className="text-xs text-slate-500">手動価格（自動取得できない場合）</label>
             <input type="number" value={form.manual_price} onChange={(e) => setForm({ ...form, manual_price: e.target.value })}
-              className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" placeholder="空欄で自動取得を試みます" step="0.01" />
+              className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" placeholder="空欄で自動取得を試みます" step="0.01" min="0" />
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-2 rounded-lg border border-slate-200 text-sm text-slate-600">キャンセル</button>

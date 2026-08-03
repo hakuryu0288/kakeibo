@@ -16,6 +16,7 @@ async function buildProcess(month: string): Promise<any> {
     { data: cards },
     { data: overrides },
     { data: lastTxns },
+    { data: lastPointRedemptions },
     { data: fixedCosts },
     { data: bankAccounts },
   ] = await Promise.all([
@@ -24,6 +25,7 @@ async function buildProcess(month: string): Promise<any> {
     supabase.from('card_monthly_overrides').select('*').eq('month', last),
     supabase.from('transactions').select('credit_card_id, amount').eq('type', 'expense')
       .gte('date', `${last}-01`).lt('date', `${month}-01`).not('credit_card_id', 'is', null),
+    supabase.from('point_redemptions').select('*').eq('apply_month', last),
     supabase.from('fixed_costs').select('*').eq('is_active', true).not('bank_account_id', 'is', null),
     supabase.from('bank_accounts').select('*'),
   ])
@@ -58,7 +60,9 @@ async function buildProcess(month: string): Promise<any> {
     const ov = (overrides ?? []).find((o: any) => o.credit_card_id === card.id)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const txnSum = (lastTxns ?? []).filter((t: any) => t.credit_card_id === card.id).reduce((s: number, t: any) => s + t.amount, 0)
-    const amount = ov ? ov.override_amount : txnSum
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pointTotal = (lastPointRedemptions ?? []).filter((p: any) => p.credit_card_id === card.id).reduce((s: number, p: any) => s + p.amount, 0)
+    const amount = ov ? ov.override_amount : txnSum - pointTotal
     if (amount === 0) continue
     bankDeltas[card.bank_account_id] = (bankDeltas[card.bank_account_id] ?? 0) - amount
     card_bills.push({
@@ -132,7 +136,7 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const acc = (bankAccounts as any[]).find((a: any) => a.id === bank_account_id)
     if (!acc) continue
-    await supabase.from('bank_accounts').update({ balance: acc.balance + delta }).eq('id', bank_account_id)
+    await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + delta }).eq('id', bank_account_id)
   }
 
   // 見込み給料を処理済みにマーク
@@ -163,7 +167,7 @@ export async function DELETE(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const acc = (bankAccounts ?? []).find((a: any) => a.id === bank_account_id)
     if (!acc) continue
-    await supabase.from('bank_accounts').update({ balance: acc.balance - delta }).eq('id', bank_account_id)
+    await supabase.from('bank_accounts').update({ balance: Number(acc.balance) - delta }).eq('id', bank_account_id)
   }
 
   // 見込み給料を未処理に戻す

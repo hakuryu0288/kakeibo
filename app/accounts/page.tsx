@@ -20,7 +20,8 @@ function shiftMonth(month: string, delta: number): string {
 }
 
 function todayStr() {
-  return new Date().toISOString().split('T')[0]
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 export default function AccountsPage() {
@@ -795,7 +796,7 @@ export default function AccountsPage() {
                     </div>
                     <div>
                       <label className="text-xs text-slate-500">金額（円）</label>
-                      <input type="number" placeholder="250000" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" required />
+                      <input type="number" placeholder="250000" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" min={1} required />
                     </div>
                   </div>
                   <div>

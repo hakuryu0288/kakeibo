@@ -13,7 +13,8 @@ function currentMonth() {
 }
 
 function today() {
-  return new Date().toISOString().split('T')[0]
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 export default function PlansPage() {
@@ -107,12 +108,14 @@ export default function PlansPage() {
   const handleMoveToPlanned = async (wishId: string) => {
     const wish = wishList.find((w) => w.id === wishId)
     if (!wish) return
+    const amount = parseInt(moveForm.amount)
+    if (isNaN(amount) || amount <= 0) return
     await fetch('/api/planned-expenses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: wish.name,
-        amount: parseInt(moveForm.amount),
+        amount,
         month: moveForm.month || currentMonth(),
         credit_card_id: moveForm.credit_card_id || null,
         category_id: wish.category_id || null,
@@ -156,7 +159,7 @@ export default function PlansPage() {
     const wish = wishList.find((w) => w.id === wishId)
     if (!wish) return
     const amount = parseInt(registerWishAmount || (wish.price ? String(wish.price) : ''))
-    if (!amount) return
+    if (isNaN(amount) || amount <= 0) return
     await fetch('/api/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -227,7 +230,7 @@ export default function PlansPage() {
                   <h2 className="text-sm font-semibold">サブスクを追加</h2>
                   <input type="text" placeholder="サービス名（例：Netflix）" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="月額（円）" value={subForm.amount} onChange={(e) => setSubForm({ ...subForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                    <input type="number" placeholder="月額（円）" value={subForm.amount} onChange={(e) => setSubForm({ ...subForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" min={1} required />
                     <input type="number" placeholder="請求日" value={subForm.billing_day} min={1} max={31} onChange={(e) => setSubForm({ ...subForm, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
                   </div>
                   <select value={subForm.credit_card_id} onChange={(e) => setSubForm({ ...subForm, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
@@ -254,7 +257,7 @@ export default function PlansPage() {
                     <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
                       <input type="text" value={editSub.name} onChange={(e) => setEditSub({ ...editSub, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="サービス名" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input type="number" value={editSub.amount} onChange={(e) => setEditSub({ ...editSub, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="月額（円）" />
+                        <input type="number" value={editSub.amount} onChange={(e) => setEditSub({ ...editSub, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="月額（円）" min={1} />
                         <input type="number" value={editSub.billing_day} min={1} max={31} onChange={(e) => setEditSub({ ...editSub, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="請求日" />
                       </div>
                       <select value={editSub.credit_card_id} onChange={(e) => setEditSub({ ...editSub, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
@@ -264,7 +267,9 @@ export default function PlansPage() {
                       <div className="flex gap-2">
                         <button onClick={() => setEditSub(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
                         <button onClick={async () => {
-                          await patch('/api/subscriptions', { id: editSub.id, name: editSub.name, amount: parseInt(editSub.amount), billing_day: parseInt(editSub.billing_day), credit_card_id: editSub.credit_card_id || null })
+                          const amount = parseInt(editSub.amount)
+                          if (isNaN(amount) || amount <= 0) return
+                          await patch('/api/subscriptions', { id: editSub.id, name: editSub.name, amount, billing_day: parseInt(editSub.billing_day), credit_card_id: editSub.credit_card_id || null })
                           setEditSub(null)
                         }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
                       </div>
@@ -323,7 +328,7 @@ export default function PlansPage() {
                   <h2 className="text-sm font-semibold">固定費を追加</h2>
                   <input type="text" placeholder="項目名（例：携帯代）" value={fixedForm.name} onChange={(e) => setFixedForm({ ...fixedForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="月額（円）" value={fixedForm.amount} onChange={(e) => setFixedForm({ ...fixedForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                    <input type="number" placeholder="月額（円）" value={fixedForm.amount} onChange={(e) => setFixedForm({ ...fixedForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" min={1} required />
                     <input type="number" placeholder="引き落とし日" value={fixedForm.billing_day} min={1} max={31} onChange={(e) => setFixedForm({ ...fixedForm, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
                   </div>
                   <select value={fixedForm.bank_account_id} onChange={(e) => setFixedForm({ ...fixedForm, bank_account_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
@@ -344,7 +349,7 @@ export default function PlansPage() {
                     <div key={f.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
                       <input type="text" value={editFixed.name} onChange={(e) => setEditFixed({ ...editFixed, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input type="number" value={editFixed.amount} onChange={(e) => setEditFixed({ ...editFixed, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
+                        <input type="number" value={editFixed.amount} onChange={(e) => setEditFixed({ ...editFixed, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" min={1} />
                         <input type="number" value={editFixed.billing_day} min={1} max={31} onChange={(e) => setEditFixed({ ...editFixed, billing_day: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="引き落とし日" />
                       </div>
                       <select value={editFixed.bank_account_id} onChange={(e) => setEditFixed({ ...editFixed, bank_account_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
@@ -354,7 +359,9 @@ export default function PlansPage() {
                       <div className="flex gap-2">
                         <button onClick={() => setEditFixed(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
                         <button onClick={async () => {
-                          await patch('/api/fixed-costs', { id: editFixed.id, name: editFixed.name, amount: parseInt(editFixed.amount), billing_day: parseInt(editFixed.billing_day), bank_account_id: editFixed.bank_account_id || null })
+                          const amount = parseInt(editFixed.amount)
+                          if (isNaN(amount) || amount <= 0) return
+                          await patch('/api/fixed-costs', { id: editFixed.id, name: editFixed.name, amount, billing_day: parseInt(editFixed.billing_day), bank_account_id: editFixed.bank_account_id || null })
                           setEditFixed(null)
                         }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
                       </div>
@@ -390,7 +397,7 @@ export default function PlansPage() {
                   <h2 className="text-sm font-semibold">確定出費を追加</h2>
                   <input type="text" placeholder="項目名" value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="金額（円）" value={planForm.amount} onChange={(e) => setPlanForm({ ...planForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                    <input type="number" placeholder="金額（円）" value={planForm.amount} onChange={(e) => setPlanForm({ ...planForm, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" min={1} required />
                     <input type="month" value={planForm.month} onChange={(e) => setPlanForm({ ...planForm, month: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
                   </div>
                   <select value={planForm.credit_card_id} onChange={(e) => setPlanForm({ ...planForm, credit_card_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm">
@@ -440,7 +447,7 @@ export default function PlansPage() {
                           <div key={p.id} className={`bg-white rounded-xl p-3 shadow-sm space-y-2 ${!isCurrentMonth && !isPast ? 'border-l-2 border-amber-300' : ''}`}>
                             <input type="text" value={editPlanned.name} onChange={(e) => setEditPlanned({ ...editPlanned, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="項目名" />
                             <div className="grid grid-cols-2 gap-2">
-                              <input type="number" value={editPlanned.amount} onChange={(e) => setEditPlanned({ ...editPlanned, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" />
+                              <input type="number" value={editPlanned.amount} onChange={(e) => setEditPlanned({ ...editPlanned, amount: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="金額（円）" min={1} />
                               <select value={editPlanned.credit_card_id} onChange={(e) => setEditPlanned({ ...editPlanned, credit_card_id: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
                                 <option value="">クレカなし</option>
                                 {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -454,7 +461,9 @@ export default function PlansPage() {
                             <div className="flex gap-2">
                               <button onClick={() => setEditPlanned(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
                               <button onClick={async () => {
-                                await patch('/api/planned-expenses', { id: editPlanned.id, name: editPlanned.name, amount: parseInt(editPlanned.amount), credit_card_id: editPlanned.credit_card_id || null, category_id: editPlanned.category_id || null, note: editPlanned.note || null })
+                                const amount = parseInt(editPlanned.amount)
+                                if (isNaN(amount) || amount <= 0) return
+                                await patch('/api/planned-expenses', { id: editPlanned.id, name: editPlanned.name, amount, credit_card_id: editPlanned.credit_card_id || null, category_id: editPlanned.category_id || null, note: editPlanned.note || null })
                                 setEditPlanned(null)
                               }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
                             </div>
@@ -530,7 +539,7 @@ export default function PlansPage() {
                   <h2 className="text-sm font-semibold">欲しいものを追加</h2>
                   <input type="text" placeholder="商品名" value={wishForm.name} onChange={(e) => setWishForm({ ...wishForm, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="価格（任意）" value={wishForm.price} onChange={(e) => setWishForm({ ...wishForm, price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
+                    <input type="number" placeholder="価格（任意）" value={wishForm.price} onChange={(e) => setWishForm({ ...wishForm, price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" min={1} />
                     <select value={wishForm.priority} onChange={(e) => setWishForm({ ...wishForm, priority: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
                       <option value="0">優先度なし</option>
                       <option value="1">★ 低</option>
@@ -558,7 +567,7 @@ export default function PlansPage() {
                     <div key={w.id} className="bg-white rounded-xl p-3 shadow-sm space-y-2">
                       <input type="text" value={editWish.name} onChange={(e) => setEditWish({ ...editWish, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" placeholder="商品名" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input type="number" value={editWish.price} onChange={(e) => setEditWish({ ...editWish, price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="価格（円）" />
+                        <input type="number" value={editWish.price} onChange={(e) => setEditWish({ ...editWish, price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" placeholder="価格（円）" min={1} />
                         <select value={editWish.priority} onChange={(e) => setEditWish({ ...editWish, priority: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm">
                           <option value="0">優先度なし</option>
                           <option value="1">★ 低</option>
@@ -575,7 +584,9 @@ export default function PlansPage() {
                       <div className="flex gap-2">
                         <button onClick={() => setEditWish(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
                         <button onClick={async () => {
-                          await patch('/api/wish-list', { id: editWish.id, name: editWish.name, price: editWish.price ? parseInt(editWish.price) : null, priority: parseInt(editWish.priority), note: editWish.note || null, planned_month: editWish.planned_month || null, category_id: editWish.category_id || null })
+                          const price = editWish.price ? parseInt(editWish.price) : null
+                          if (price !== null && (isNaN(price) || price <= 0)) return
+                          await patch('/api/wish-list', { id: editWish.id, name: editWish.name, price, priority: parseInt(editWish.priority), note: editWish.note || null, planned_month: editWish.planned_month || null, category_id: editWish.category_id || null })
                           setEditWish(null)
                         }} className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">保存</button>
                       </div>
@@ -613,7 +624,7 @@ export default function PlansPage() {
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="text-xs text-slate-400">金額（円）</label>
-                            <input type="number" value={moveForm.amount} onChange={(e) => setMoveForm({ ...moveForm, amount: e.target.value })} placeholder={w.price ? String(w.price) : '0'} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white" required />
+                            <input type="number" value={moveForm.amount} onChange={(e) => setMoveForm({ ...moveForm, amount: e.target.value })} placeholder={w.price ? String(w.price) : '0'} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white" min={1} required />
                           </div>
                           <div>
                             <label className="text-xs text-slate-400">出費月</label>
@@ -628,7 +639,7 @@ export default function PlansPage() {
                           <button onClick={() => setMoveWishId(null)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs bg-white">キャンセル</button>
                           <button
                             onClick={() => handleMoveToPlanned(w.id)}
-                            disabled={!moveForm.amount}
+                            disabled={!(parseInt(moveForm.amount) > 0)}
                             className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
                           >確定出費に移動</button>
                         </div>
@@ -639,7 +650,7 @@ export default function PlansPage() {
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="text-xs text-slate-400">金額（円）</label>
-                            <input type="number" value={registerWishAmount} onChange={(e) => setRegisterWishAmount(e.target.value)} placeholder={w.price ? String(w.price) : '0'} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white" required />
+                            <input type="number" value={registerWishAmount} onChange={(e) => setRegisterWishAmount(e.target.value)} placeholder={w.price ? String(w.price) : '0'} className="w-full border border-slate-200 rounded-lg p-1.5 text-xs mt-0.5 bg-white" min={1} required />
                           </div>
                           <div>
                             <label className="text-xs text-slate-400">日付</label>

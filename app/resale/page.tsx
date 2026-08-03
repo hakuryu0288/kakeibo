@@ -112,8 +112,8 @@ export default function ResalePage() {
           <input type="text" placeholder="商品名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm" required />
           <div className="grid grid-cols-3 gap-2">
             <input type="number" placeholder="個数" value={form.quantity} min={1} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
-            <input type="number" placeholder="仕入れ価格" value={form.purchase_price} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
-            <input type="number" placeholder="売値（任意）" value={form.sell_price} onChange={(e) => setForm({ ...form, sell_price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
+            <input type="number" placeholder="仕入れ価格" value={form.purchase_price} min={0} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" required />
+            <input type="number" placeholder="売値（任意）" value={form.sell_price} min={0} onChange={(e) => setForm({ ...form, sell_price: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-sm" />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ResaleItem['status'] })} className="border border-slate-200 rounded-lg p-2 text-sm">

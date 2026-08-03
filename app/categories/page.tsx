@@ -90,6 +90,7 @@ export default function CategoriesPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('このカテゴリを削除しますか？（紐付く取引のカテゴリはなしになります）')) return
+    if (form.id === id) { setForm(defaultForm); setShowForm(false) }
     await fetch(`/api/categories?id=${id}`, { method: 'DELETE' })
     fetchCategories()
   }

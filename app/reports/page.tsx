@@ -90,12 +90,20 @@ export default function ReportsPage() {
     income: 0, expense: 0, month: selectedMonth, txnIncome: 0, salaryIncome: 0,
   }
 
+  const uncategorizedCategory = (type: 'income' | 'expense'): Category => ({
+    id: '', name: 'カテゴリなし', type, budget_limit: null, color: '#94a3b8', icon: '📦', created_at: '',
+  })
+
   const categoryBreakdown = categories
     .filter((c) => c.type === 'expense')
     .map((cat) => ({
       category: cat,
       total: selectedTxns.filter((t) => t.type === 'expense' && t.category_id === cat.id).reduce((s, t) => s + t.amount, 0),
     }))
+    .concat([{
+      category: uncategorizedCategory('expense'),
+      total: selectedTxns.filter((t) => t.type === 'expense' && !t.category_id).reduce((s, t) => s + t.amount, 0),
+    }])
     .filter((cb) => cb.total > 0)
     .sort((a, b) => b.total - a.total)
 
@@ -122,6 +130,10 @@ export default function ReportsPage() {
       category: cat,
       total: selectedTxns.filter((t) => t.type === 'income' && t.category_id === cat.id).reduce((s, t) => s + t.amount, 0),
     }))
+    .concat([{
+      category: uncategorizedCategory('income'),
+      total: selectedTxns.filter((t) => t.type === 'income' && !t.category_id).reduce((s, t) => s + t.amount, 0),
+    }])
     .filter((cb) => cb.total > 0)
     .sort((a, b) => b.total - a.total)
 
@@ -381,12 +393,6 @@ export default function ReportsPage() {
                             )
                           })}
                         </div>
-                      </div>
-                    )}
-                    {selectedSummary.txnIncome > 0 && incomeCatBreakdown.length === 0 && (
-                      <div className="flex justify-between text-xs p-2 bg-slate-50 rounded-lg">
-                        <span className="text-slate-600">その他収入（カテゴリなし）</span>
-                        <span className="text-green-600 font-medium">{formatYen(selectedSummary.txnIncome)}</span>
                       </div>
                     )}
                   </>
