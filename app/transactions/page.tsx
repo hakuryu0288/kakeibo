@@ -278,12 +278,15 @@ export default function TransactionsPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="divide-y divide-slate-100">
-            {transactions.map((t) => (
+            {transactions.map((t) => {
+              const isTransfer = t.type === 'transfer'
+              const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
+              return (
               <div key={t.id} className="flex items-center justify-between px-4 py-3 gap-2">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <span className="text-xl">{t.categories?.icon ?? '📦'}</span>
+                  <span className="text-xl">{isTransfer ? '🔁' : t.categories?.icon ?? '📦'}</span>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{t.categories?.name ?? 'その他'}</p>
+                    <p className="text-sm font-medium truncate">{isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し（銀行→現金）' : '預け入れ（現金→銀行）') : (t.categories?.name ?? 'その他')}</p>
                     <p className="text-xs text-slate-400 truncate">
                       {t.date}
                       {t.credit_cards ? ` · 💳 ${t.credit_cards.name}` : ''}
@@ -291,14 +294,16 @@ export default function TransactionsPage() {
                       {t.point_balances ? ` · ⭐ ${t.point_balances.name}` : ''}
                       {t.memo ? `　${t.memo}` : ''}
                     </p>
-                    <select
-                      value={t.category_id ?? ''}
-                      onChange={(e) => handleCategoryChange(t.id, e.target.value)}
-                      className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1 max-w-full"
-                    >
-                      <option value="">カテゴリなし</option>
-                      {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-                    </select>
+                    {!isTransfer && (
+                      <select
+                        value={t.category_id ?? ''}
+                        onChange={(e) => handleCategoryChange(t.id, e.target.value)}
+                        className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1 max-w-full"
+                      >
+                        <option value="">カテゴリなし</option>
+                        {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                      </select>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -326,8 +331,8 @@ export default function TransactionsPage() {
                     </div>
                   ) : (
                     <>
-                      <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                        {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                      <span className={`text-sm font-bold ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                        {cashIncreases ? '+' : '-'}{yen(t.amount)}
                       </span>
                       <button onClick={() => { setEditingId(t.id); setEditAmount(String(t.amount)); setEditDate(t.date) }} className="text-slate-300 hover:text-indigo-400 text-sm leading-none px-0.5">✏</button>
                       <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-red-400 text-lg leading-none">×</button>
@@ -335,7 +340,8 @@ export default function TransactionsPage() {
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}

@@ -19,6 +19,10 @@ function shiftMonth(month: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function todayStr() {
+  return new Date().toISOString().split('T')[0]
+}
+
 export default function AccountsPage() {
   const today = currentMonth()
 
@@ -37,6 +41,10 @@ export default function AccountsPage() {
 
   const [cashAmount, setCashAmount] = useState('')
   const [cashMemo, setCashMemo] = useState('')
+
+  // 銀行⇔現金 振替
+  const [showTransferForm, setShowTransferForm] = useState(false)
+  const [transferForm, setTransferForm] = useState({ direction: 'withdraw' as 'withdraw' | 'deposit', bank_account_id: '', amount: '', date: todayStr() })
 
   const [editingCardId, setEditingCardId] = useState<string | null>(null)
   const [overrideInput, setOverrideInput] = useState('')
@@ -102,7 +110,7 @@ export default function AccountsPage() {
     fetch(`/api/transactions?month=${cashMonth}`).then((r) => r.json()).then((txns) => {
       const all: Transaction[] = Array.isArray(txns) ? txns : []
       setCashTxns(all.filter((t) =>
-        t.credit_card_id === null && t.bank_account_id === null && t.point_balance_id === null
+        t.type === 'transfer' || (t.credit_card_id === null && t.bank_account_id === null && t.point_balance_id === null)
       ))
     })
   }
@@ -120,6 +128,28 @@ export default function AccountsPage() {
     await fetch('/api/cash', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: cash.id, amount: parseInt(cashAmount) }) })
     setCashAmount('')
     fetchAll()
+  }
+
+  const saveTransfer = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!transferForm.bank_account_id || !transferForm.amount) return
+    await fetch('/api/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: transferForm.date,
+        amount: parseInt(transferForm.amount),
+        type: 'transfer',
+        transfer_direction: transferForm.direction,
+        bank_account_id: transferForm.bank_account_id,
+        category_id: null,
+        memo: null,
+      }),
+    })
+    setTransferForm({ direction: 'withdraw', bank_account_id: '', amount: '', date: todayStr() })
+    setShowTransferForm(false)
+    fetchAll()
+    fetchCashTabData()
   }
 
   const addCashMemo = async (e: React.FormEvent) => {
@@ -461,6 +491,48 @@ export default function AccountsPage() {
                 </form>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-slate-700">🔁 銀行⇔現金 振替</h2>
+                  {!showTransferForm && (
+                    <button onClick={() => setShowTransferForm(true)} className="text-xs text-indigo-500 hover:underline">
+                      + 振替を入力
+                    </button>
+                  )}
+                </div>
+                {showTransferForm && (
+                  <form onSubmit={saveTransfer} className="space-y-3 mt-3">
+                    <div className="flex rounded-lg overflow-hidden border border-slate-200">
+                      <button type="button" onClick={() => setTransferForm({ ...transferForm, direction: 'withdraw' })}
+                        className={`flex-1 py-1.5 text-sm font-medium transition-colors ${transferForm.direction === 'withdraw' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>
+                        🏦→💴 引き出し
+                      </button>
+                      <button type="button" onClick={() => setTransferForm({ ...transferForm, direction: 'deposit' })}
+                        className={`flex-1 py-1.5 text-sm font-medium transition-colors ${transferForm.direction === 'deposit' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>
+                        💴→🏦 預け入れ
+                      </button>
+                    </div>
+                    <select value={transferForm.bank_account_id}
+                      onChange={(e) => setTransferForm({ ...transferForm, bank_account_id: e.target.value })}
+                      className="w-full border border-slate-200 rounded-lg p-2 text-sm" required>
+                      <option value="">口座を選択</option>
+                      {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <div className="flex gap-2">
+                      <input type="date" value={transferForm.date}
+                        onChange={(e) => setTransferForm({ ...transferForm, date: e.target.value })}
+                        className="border border-slate-200 rounded-lg p-2 text-sm" required />
+                      <input type="number" placeholder="金額" value={transferForm.amount}
+                        onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })}
+                        className="flex-1 border border-slate-200 rounded-lg p-2 text-sm" required min={1} />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setShowTransferForm(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
+                      <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">振替を登録</button>
+                    </div>
+                  </form>
+                )}
+              </div>
+              <div className="bg-white rounded-xl p-4 shadow-sm">
                 <h2 className="text-sm font-semibold text-slate-700 mb-2">現金メモ</h2>
                 <form onSubmit={addCashMemo} className="flex gap-2 mb-3">
                   <input type="text" placeholder="メモを入力" value={cashMemo}
@@ -508,12 +580,17 @@ export default function AccountsPage() {
                   return (
                     <>
                       <div className="divide-y divide-slate-100">
-                        {cashTxns.map((t) => (
+                        {cashTxns.map((t) => {
+                          const isTransfer = t.type === 'transfer'
+                          const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
+                          return (
                           <div key={t.id} className="flex justify-between items-start px-4 py-2.5 gap-2">
                             <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-base shrink-0">{t.categories?.icon ?? (t.type === 'income' ? '💰' : '💴')}</span>
+                              <span className="text-base shrink-0">{isTransfer ? '🔁' : t.categories?.icon ?? (t.type === 'income' ? '💰' : '💴')}</span>
                               <div className="min-w-0">
-                                <p className="text-xs font-medium">{t.categories?.name ?? 'その他'}</p>
+                                <p className="text-xs font-medium">
+                                  {isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し' : '預け入れ') : (t.categories?.name ?? 'その他')}
+                                </p>
                                 {editingCashTxnId === t.id ? (
                                   <input
                                     type="date"
@@ -522,16 +599,22 @@ export default function AccountsPage() {
                                     className="border border-indigo-300 rounded px-1 py-0.5 text-xs mt-0.5"
                                   />
                                 ) : (
-                                  <p className="text-xs text-slate-400 truncate">{t.date}{t.memo ? '　' + t.memo : ''}</p>
+                                  <p className="text-xs text-slate-400 truncate">
+                                    {t.date}
+                                    {isTransfer && t.bank_accounts ? `　🏦 ${t.bank_accounts.name}` : ''}
+                                    {t.memo ? '　' + t.memo : ''}
+                                  </p>
                                 )}
-                                <select
-                                  value={t.category_id ?? ''}
-                                  onChange={(e) => changeCashTxnCategory(t.id, e.target.value)}
-                                  className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1 max-w-full"
-                                >
-                                  <option value="">カテゴリなし</option>
-                                  {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-                                </select>
+                                {!isTransfer && (
+                                  <select
+                                    value={t.category_id ?? ''}
+                                    onChange={(e) => changeCashTxnCategory(t.id, e.target.value)}
+                                    className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1 max-w-full"
+                                  >
+                                    <option value="">カテゴリなし</option>
+                                    {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                                  </select>
+                                )}
                               </div>
                             </div>
                             {editingCashTxnId === t.id ? (
@@ -552,15 +635,16 @@ export default function AccountsPage() {
                               <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   onClick={() => { setEditingCashTxnId(t.id); setEditCashAmount(String(t.amount)); setEditCashDate(t.date) }}
-                                  className={`text-sm font-bold hover:bg-slate-50 rounded px-1 ${t.type === 'income' ? 'text-green-600' : 'text-red-500'}`}
+                                  className={`text-sm font-bold hover:bg-slate-50 rounded px-1 ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-500'}`}
                                 >
-                                  {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                                  {cashIncreases ? '+' : '-'}{yen(t.amount)}
                                 </button>
                                 <button onClick={() => deleteCashTxn(t.id)} className="text-slate-300 hover:text-red-400 text-lg leading-none px-0.5">×</button>
                               </div>
                             )}
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </>
                   )

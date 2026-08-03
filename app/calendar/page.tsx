@@ -51,7 +51,7 @@ export default function CalendarPage() {
   transactions.forEach((t) => {
     if (!byDate[t.date]) byDate[t.date] = { income: 0, expense: 0 }
     if (t.type === 'income') byDate[t.date].income += t.amount
-    else byDate[t.date].expense += t.amount
+    else if (t.type === 'expense') byDate[t.date].expense += t.amount
   })
 
   const memoByDate: Record<string, CalendarMemo> = {}
@@ -159,18 +159,22 @@ export default function CalendarPage() {
             <p className="text-xs text-slate-400">この日の取引なし</p>
           ) : (
             <div className="divide-y divide-slate-100">
-              {selectedTxns.map((t) => (
+              {selectedTxns.map((t) => {
+                const isTransfer = t.type === 'transfer'
+                const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
+                return (
                 <div key={t.id} className="flex justify-between items-center py-2">
                   <div className="flex items-center gap-2">
-                    <span>{t.categories?.icon ?? '📦'}</span>
-                    <span className="text-sm">{t.categories?.name ?? 'その他'}</span>
+                    <span>{isTransfer ? '🔁' : t.categories?.icon ?? '📦'}</span>
+                    <span className="text-sm">{isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し' : '預け入れ') : (t.categories?.name ?? 'その他')}</span>
                     {t.memo && <span className="text-xs text-slate-400">{t.memo}</span>}
                   </div>
-                  <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                    {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                  <span className={`text-sm font-bold ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                    {cashIncreases ? '+' : '-'}{yen(t.amount)}
                   </span>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

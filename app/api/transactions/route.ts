@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { date, amount, type, category_id, memo, credit_card_id, bank_account_id, point_balance_id } = body
+  const { date, amount, type, category_id, memo, credit_card_id, bank_account_id, point_balance_id, transfer_direction } = body
 
   const { data, error } = await supabase
     .from('transactions')
@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
       credit_card_id: credit_card_id || null,
       bank_account_id: bank_account_id || null,
       point_balance_id: point_balance_id || null,
+      transfer_direction: transfer_direction || null,
     })
     .select()
     .single()
@@ -60,6 +61,14 @@ export async function POST(req: NextRequest) {
       if (cash) await supabase.from('cash_balance').update({ amount: cash.amount - amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
     }
     // カード払いはcredit_card_idで紐付けのみ
+  } else if (type === 'transfer' && bank_account_id) {
+    // 銀行⇔現金の振替: withdraw=銀行→現金（引き出し） / deposit=現金→銀行（預け入れ）
+    const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', bank_account_id).single()
+    const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
+    const bankDelta = transfer_direction === 'withdraw' ? -amount : amount
+    const cashDelta = transfer_direction === 'withdraw' ? amount : -amount
+    if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + bankDelta }).eq('id', bank_account_id)
+    if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + cashDelta, updated_at: new Date().toISOString() }).eq('id', cash.id)
   }
 
   return NextResponse.json(data, { status: 201 })
@@ -89,6 +98,13 @@ export async function PATCH(req: NextRequest) {
         const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
         if (cash) await supabase.from('cash_balance').update({ amount: cash.amount - diff }).eq('id', cash.id)
       }
+    } else if (txn.type === 'transfer' && txn.bank_account_id) {
+      const bankDelta = txn.transfer_direction === 'withdraw' ? -diff : diff
+      const cashDelta = txn.transfer_direction === 'withdraw' ? diff : -diff
+      const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', txn.bank_account_id).single()
+      if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + bankDelta }).eq('id', txn.bank_account_id)
+      const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
+      if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + cashDelta }).eq('id', cash.id)
     }
   }
 
@@ -125,6 +141,14 @@ export async function DELETE(req: NextRequest) {
         const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
         if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + txn.amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
       }
+    } else if (txn.type === 'transfer' && txn.bank_account_id) {
+      // 振替を取り消す（反対方向に戻す）
+      const bankDelta = txn.transfer_direction === 'withdraw' ? txn.amount : -txn.amount
+      const cashDelta = txn.transfer_direction === 'withdraw' ? -txn.amount : txn.amount
+      const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', txn.bank_account_id).single()
+      if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + bankDelta }).eq('id', txn.bank_account_id)
+      const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
+      if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + cashDelta, updated_at: new Date().toISOString() }).eq('id', cash.id)
     }
   }
 

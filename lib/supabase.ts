@@ -41,7 +41,8 @@ export type Transaction = {
   id: string
   date: string
   amount: number
-  type: 'income' | 'expense'
+  type: 'income' | 'expense' | 'transfer'
+  transfer_direction?: 'withdraw' | 'deposit' | null
   category_id: string | null
   credit_card_id: string | null
   bank_account_id: string | null

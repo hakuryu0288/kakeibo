@@ -63,7 +63,8 @@ type RecentTransaction = {
   id: string
   date: string
   amount: number
-  type: 'income' | 'expense'
+  type: 'income' | 'expense' | 'transfer'
+  transfer_direction?: 'withdraw' | 'deposit' | null
   memo: string | null
   categories?: { name: string; icon: string }
 }
@@ -253,20 +254,24 @@ export default function DashboardPage() {
           <p className="text-sm text-slate-400 text-center py-4">取引がありません</p>
         ) : (
           <div className="divide-y divide-slate-100">
-            {recentTxns.map((t) => (
+            {recentTxns.map((t) => {
+              const isTransfer = t.type === 'transfer'
+              const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
+              return (
               <div key={t.id} className="flex items-center justify-between py-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">{t.categories?.icon ?? '📦'}</span>
+                  <span className="text-lg">{isTransfer ? '🔁' : t.categories?.icon ?? '📦'}</span>
                   <div>
-                    <p className="text-sm font-medium">{t.categories?.name ?? 'その他'}</p>
+                    <p className="text-sm font-medium">{isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し' : '預け入れ') : (t.categories?.name ?? 'その他')}</p>
                     <p className="text-xs text-slate-400">{t.date}{t.memo ? '　' + t.memo : ''}</p>
                   </div>
                 </div>
-                <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                  {t.type === 'income' ? '+' : '-'}{yen(t.amount)}
+                <span className={`text-sm font-bold ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                  {cashIncreases ? '+' : '-'}{yen(t.amount)}
                 </span>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
