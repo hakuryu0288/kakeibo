@@ -4,13 +4,21 @@ import { supabase } from '@/lib/supabase'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const month = searchParams.get('month')
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
 
   let query = supabase
     .from('transactions')
     .select('*, categories(*), credit_cards(name, color), bank_accounts(name), point_balances(name)')
     .order('date', { ascending: false })
+    // 同じ日付の中では登録が新しい順に並べる（並び順を安定させるため）
+    .order('created_at', { ascending: false })
 
-  if (month) {
+  if (from || to) {
+    // 期間指定（from/to はどちらも当日を含む）。month より優先する
+    if (from) query = query.gte('date', from)
+    if (to) query = query.lte('date', to)
+  } else if (month) {
     const start = `${month}-01`
     const nextMonth = new Date(`${month}-01`)
     nextMonth.setMonth(nextMonth.getMonth() + 1)

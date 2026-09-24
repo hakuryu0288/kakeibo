@@ -258,15 +258,17 @@ export default function DashboardPage() {
               const isTransfer = t.type === 'transfer'
               const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
               return (
-              <div key={t.id} className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{isTransfer ? '🔁' : t.categories?.icon ?? '📦'}</span>
-                  <div>
-                    <p className="text-sm font-medium">{isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し' : '預け入れ') : (t.categories?.name ?? 'その他')}</p>
-                    <p className="text-xs text-slate-400">{t.date}{t.memo ? '　' + t.memo : ''}</p>
+              <div key={t.id} className="flex items-start justify-between py-2 gap-2">
+                <div className="flex items-start gap-2 min-w-0 flex-1">
+                  <span className="text-lg leading-none mt-0.5">{isTransfer ? '🔁' : t.categories?.icon ?? '📦'}</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し' : '預け入れ') : (t.categories?.name ?? 'その他')}</p>
+                    <p className="text-xs text-slate-400">{t.date}</p>
+                    {/* メモは行を分けて表示（スマホで見切れるため） */}
+                    {t.memo && <p className="text-xs text-slate-500 break-words">📝 {t.memo}</p>}
                   </div>
                 </div>
-                <span className={`text-sm font-bold ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                <span className={`text-sm font-bold shrink-0 ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
                   {cashIncreases ? '+' : '-'}{yen(t.amount)}
                 </span>
               </div>

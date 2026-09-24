@@ -136,7 +136,19 @@ export function getDemoResponse(url: string): unknown {
   const month = urlObj.searchParams.get('month') ?? '2026-05'
 
   if (path === '/api/summary')           return makeSummary(month)
-  if (path === '/api/transactions')      return makeTxns(month)
+  if (path === '/api/transactions') {
+    const from = urlObj.searchParams.get('from')
+    const to = urlObj.searchParams.get('to')
+    if (from && to) {
+      // 期間にまたがる各月のダミー取引を作り、指定範囲で絞り込む
+      const months = new Set([from.slice(0, 7), to.slice(0, 7)])
+      return [...months]
+        .flatMap((m) => makeTxns(m))
+        .filter((t) => t.date >= from && t.date <= to)
+        .sort((a, b) => (a.date < b.date ? 1 : -1))
+    }
+    return makeTxns(month)
+  }
   if (path === '/api/categories')        return DEMO_CATEGORIES
   if (path === '/api/bank-accounts')     return DEMO_BANK_ACCOUNTS
   if (path === '/api/credit-cards')      return DEMO_CREDIT_CARDS

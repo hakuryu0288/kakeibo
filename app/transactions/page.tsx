@@ -17,6 +17,18 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
+// "2026-09-23" → "9/23(水)"
+function labelDate(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number)
+  return `${m}/${d}(${WEEKDAYS[new Date(y, m - 1, d).getDay()]})`
+}
+
+// 日付内の並び順（registered = 登録した順（新しい登録が上） / amount = 金額が大きい順）
+type SortMode = 'registered' | 'amount'
+const SORT_KEY = 'kakeibo-txn-sort'
+
 export default function TransactionsPage() {
   const [month, setMonth] = useState(currentMonth())
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -30,6 +42,9 @@ export default function TransactionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState('')
   const [editDate, setEditDate] = useState('')
+  const [sortMode, setSortMode] = useState<SortMode>(() =>
+    typeof window !== 'undefined' && localStorage.getItem(SORT_KEY) === 'amount' ? 'amount' : 'registered'
+  )
 
   const [form, setForm] = useState({
     date: today(),
@@ -131,6 +146,32 @@ export default function TransactionsPage() {
       .filter((t) => t.type === 'expense' && t.credit_card_id === card.id)
       .reduce((s, t) => s + t.amount, 0),
   })).filter((c) => c.total > 0)
+
+  const changeSort = (mode: SortMode) => {
+    setSortMode(mode)
+    localStorage.setItem(SORT_KEY, mode)
+  }
+
+  // 日付ごとにまとめる（APIが日付の降順で返す前提）
+  const groups: { date: string; items: Transaction[]; income: number; expense: number }[] = []
+  for (const t of transactions) {
+    let g = groups.find((x) => x.date === t.date)
+    if (!g) {
+      g = { date: t.date, items: [], income: 0, expense: 0 }
+      groups.push(g)
+    }
+    g.items.push(t)
+    if (t.type === 'income') g.income += t.amount
+    if (t.type === 'expense') g.expense += t.amount
+  }
+  // 並び替えは日付の中だけで行う（日付の区切りはそのまま）
+  for (const g of groups) {
+    g.items.sort((a, b) =>
+      sortMode === 'amount'
+        ? b.amount - a.amount
+        : b.created_at.localeCompare(a.created_at)
+    )
+  }
 
   const [year, mon] = month.split('-')
 
@@ -277,9 +318,38 @@ export default function TransactionsPage() {
       ) : transactions.length === 0 ? (
         <div className="text-center py-8 text-slate-400">この月の取引はありません</div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="space-y-3">
+          {/* 日付内の並び替え */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-500">全{transactions.length}件</span>
+            <div className="flex rounded-lg overflow-hidden border border-slate-200 bg-white">
+              <button
+                onClick={() => changeSort('registered')}
+                className={`px-3 py-1 text-xs transition-colors ${sortMode === 'registered' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-500'}`}
+              >
+                登録した順
+              </button>
+              <button
+                onClick={() => changeSort('amount')}
+                className={`px-3 py-1 text-xs transition-colors ${sortMode === 'amount' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-500'}`}
+              >
+                金額が大きい順
+              </button>
+            </div>
+          </div>
+
+          {groups.map((g) => (
+          <div key={g.date} className="bg-white rounded-xl shadow-sm overflow-hidden">
+            {/* 日付の見出し（日別の小計つき） */}
+            <div className="flex justify-between items-center bg-slate-50 px-4 py-2 border-b border-slate-100">
+              <span className="text-xs font-semibold text-slate-600">{labelDate(g.date)}</span>
+              <span className="text-xs">
+                {g.income > 0 && <span className="text-green-600 mr-2">+{yen(g.income)}</span>}
+                {g.expense > 0 && <span className="text-red-600">-{yen(g.expense)}</span>}
+              </span>
+            </div>
           <div className="divide-y divide-slate-100">
-            {transactions.map((t) => {
+            {g.items.map((t) => {
               const isTransfer = t.type === 'transfer'
               const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
               return (
@@ -288,13 +358,17 @@ export default function TransactionsPage() {
                   <span className="text-xl">{isTransfer ? '🔁' : t.categories?.icon ?? '📦'}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し（銀行→現金）' : '預け入れ（現金→銀行）') : (t.categories?.name ?? 'その他')}</p>
-                    <p className="text-xs text-slate-400 truncate">
-                      {t.date}
-                      {t.credit_cards ? ` · 💳 ${t.credit_cards.name}` : ''}
-                      {t.bank_accounts ? ` · 🏦 ${t.bank_accounts.name}` : ''}
-                      {t.point_balances ? ` · ⭐ ${t.point_balances.name}` : ''}
-                      {t.memo ? `　${t.memo}` : ''}
-                    </p>
+                    {/* 支払い先とメモは行を分ける（スマホでメモが見切れるため）。日付は見出しに出している */}
+                    {(t.credit_cards || t.bank_accounts || t.point_balances) && (
+                      <p className="text-xs text-slate-400 truncate">
+                        {t.credit_cards ? `💳 ${t.credit_cards.name}` : ''}
+                        {t.bank_accounts ? `🏦 ${t.bank_accounts.name}` : ''}
+                        {t.point_balances ? `⭐ ${t.point_balances.name}` : ''}
+                      </p>
+                    )}
+                    {t.memo && (
+                      <p className="text-xs text-slate-500 break-words">📝 {t.memo}</p>
+                    )}
                     {!isTransfer && (
                       <select
                         value={t.category_id ?? ''}
@@ -344,6 +418,8 @@ export default function TransactionsPage() {
               )
             })}
           </div>
+          </div>
+          ))}
         </div>
       )}
     </div>

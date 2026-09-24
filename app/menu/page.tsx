@@ -7,6 +7,7 @@ const AUTH_KEY = 'kakeibo_auth'
 
 const menuItems = [
   { href: '/transactions', icon: '💸', label: '収支一覧', desc: '収入・支出の入力と確認' },
+  { href: '/summary', icon: '🔍', label: '集計', desc: '期間を指定して取引と収支を確認' },
   { href: '/reports', icon: '📊', label: 'レポート', desc: '月次グラフと推移' },
   { href: '/investments', icon: '📈', label: '投資・相場', desc: 'ポートフォリオと相場モニター' },
   { href: '/calendar', icon: '📅', label: 'カレンダー', desc: '日別収支とメモ' },
