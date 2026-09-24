@@ -352,6 +352,11 @@ export default function TransactionsPage() {
             {g.items.map((t) => {
               const isTransfer = t.type === 'transfer'
               const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
+              // 支払い方法（カード・口座・ポイントの紐付けがなければ現金）
+              const payLabel = t.credit_cards ? `💳 ${t.credit_cards.name}`
+                : t.bank_accounts ? `🏦 ${t.bank_accounts.name}`
+                : t.point_balances ? `⭐ ${t.point_balances.name}`
+                : '💴 現金'
               return (
               <div key={t.id} className="flex items-center justify-between px-4 py-3 gap-2">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -359,13 +364,7 @@ export default function TransactionsPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し（銀行→現金）' : '預け入れ（現金→銀行）') : (t.categories?.name ?? 'その他')}</p>
                     {/* 支払い先とメモは行を分ける（スマホでメモが見切れるため）。日付は見出しに出している */}
-                    {(t.credit_cards || t.bank_accounts || t.point_balances) && (
-                      <p className="text-xs text-slate-400 truncate">
-                        {t.credit_cards ? `💳 ${t.credit_cards.name}` : ''}
-                        {t.bank_accounts ? `🏦 ${t.bank_accounts.name}` : ''}
-                        {t.point_balances ? `⭐ ${t.point_balances.name}` : ''}
-                      </p>
-                    )}
+                    <p className="text-xs text-slate-400 truncate">{payLabel}</p>
                     {t.memo && (
                       <p className="text-xs text-slate-500 break-words">📝 {t.memo}</p>
                     )}

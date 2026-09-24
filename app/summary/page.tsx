@@ -361,6 +361,11 @@ export default function SummaryPage() {
                         {g.items.map((t) => {
                           const isTransfer = t.type === 'transfer'
                           const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
+                          // 支払い方法（カード・口座・ポイントの紐付けがなければ現金）
+                          const payLabel = t.credit_cards ? `💳 ${t.credit_cards.name}`
+                            : t.bank_accounts ? `🏦 ${t.bank_accounts.name}`
+                            : t.point_balances ? `⭐ ${t.point_balances.name}`
+                            : '💴 現金'
                           return (
                             <div key={t.id} className="flex items-start justify-between py-2 gap-2">
                               <div className="flex items-start gap-2 min-w-0 flex-1">
@@ -371,13 +376,7 @@ export default function SummaryPage() {
                                       ? (t.transfer_direction === 'withdraw' ? '引き出し（銀行→現金）' : '預け入れ（現金→銀行）')
                                       : (t.categories?.name ?? 'その他')}
                                   </p>
-                                  {(t.credit_cards || t.bank_accounts || t.point_balances) && (
-                                    <p className="text-xs text-slate-400 truncate">
-                                      {t.credit_cards ? `💳 ${t.credit_cards.name}` : ''}
-                                      {t.bank_accounts ? `🏦 ${t.bank_accounts.name}` : ''}
-                                      {t.point_balances ? `⭐ ${t.point_balances.name}` : ''}
-                                    </p>
-                                  )}
+                                  <p className="text-xs text-slate-400 truncate">{payLabel}</p>
                                   {t.memo && (
                                     <p className="text-xs text-slate-500 break-words">📝 {t.memo}</p>
                                   )}
