@@ -165,6 +165,7 @@ export function getDemoResponse(url: string): unknown {
   if (path === '/api/resale-items')      return DEMO_RESALE_ITEMS
   if (path === '/api/cash-memos')        return DEMO_CASH_MEMOS
   if (path === '/api/calendar-memos')    return []
+  if (path === '/api/home-memo')         return { content: '', updated_at: null }
   if (path === '/api/point-redemptions') return []
   if (path === '/api/card-monthly-overrides') return []
   if (path === '/api/prices') {

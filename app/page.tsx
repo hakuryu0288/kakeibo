@@ -69,6 +69,13 @@ type RecentTransaction = {
   categories?: { name: string; icon: string }
 }
 
+// メモ欄の表示行数（端末ごとに保存）
+const MEMO_ROWS_KEY = 'kakeibo-memo-rows'
+const MEMO_ROWS_MIN = 2
+const MEMO_ROWS_MAX = 30
+// 以前は端末内だけに保存していたメモのキー
+const LEGACY_MEMO_KEY = 'kakeibo-scratchpad'
+
 export default function DashboardPage() {
   const today = currentMonth()
   const [month, setMonth] = useState(today)
@@ -80,9 +87,19 @@ export default function DashboardPage() {
   const [calcExpr, setCalcExpr] = useState('')
   const [calcResult, setCalcResult] = useState<number | null>(null)
   const [calcJustEval, setCalcJustEval] = useState(false)
-  const [scratchMemo, setScratchMemo] = useState(() =>
-    typeof window !== 'undefined' ? (localStorage.getItem('kakeibo-scratchpad') ?? '') : ''
-  )
+  // メモ欄（サーバーに保存して全端末で共有する）
+  const [memoText, setMemoText] = useState('')
+  const [memoSaved, setMemoSaved] = useState('')  // 最後にサーバーと一致していた内容
+  const [memoUpdatedAt, setMemoUpdatedAt] = useState<string | null>(null)
+  const [memoLoaded, setMemoLoaded] = useState(false)
+  const [memoSaving, setMemoSaving] = useState(false)
+  const [memoError, setMemoError] = useState('')
+  // 表示の高さ（行数）は端末ごとに好みが違うので、この端末に保存する
+  const [memoRows, setMemoRows] = useState(() => {
+    const n = typeof window !== 'undefined' ? Number(localStorage.getItem(MEMO_ROWS_KEY)) : NaN
+    return Number.isFinite(n) && n >= MEMO_ROWS_MIN && n <= MEMO_ROWS_MAX ? n : 4
+  })
+  const memoDirty = memoText !== memoSaved
 
   const goToPrevMonth = () => setMonth((m) => shiftMonth(m, -1))
   const goToNextMonth = () => {
@@ -115,6 +132,70 @@ export default function DashboardPage() {
         })
       }
     }
+  }
+
+  useEffect(() => {
+    fetch('/api/home-memo')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('load failed'))))
+      .then((m: { content: string; updated_at: string | null }) => {
+        setMemoSaved(m.content)
+        setMemoUpdatedAt(m.updated_at)
+        // 以前この端末だけに保存していたメモがあれば、未保存の状態で引き継ぐ
+        const legacy = localStorage.getItem(LEGACY_MEMO_KEY)
+        setMemoText(!m.content && legacy ? legacy : m.content)
+        setMemoLoaded(true)
+      })
+      .catch(() => setMemoError('メモを読み込めませんでした'))
+  }, [])
+
+  const saveMemo = async (force = false) => {
+    setMemoSaving(true)
+    setMemoError('')
+    try {
+      const res = await fetch('/api/home-memo', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: memoText, base_updated_at: memoUpdatedAt, force }),
+      })
+      if (res.status === 409) {
+        // 他の端末で先に保存されていた
+        const { current } = await res.json()
+        if (confirm('他の端末でメモが更新されています。\nこの端末の内容で上書きしますか？\n（キャンセルすると最新の内容を読み込みます）')) {
+          setMemoSaving(false)
+          return saveMemo(true)
+        }
+        setMemoText(current.content)
+        setMemoSaved(current.content)
+        setMemoUpdatedAt(current.updated_at)
+      } else if (res.ok) {
+        const m = await res.json()
+        // デモモードでは保存内容が返らないので、送った内容を正とする
+        const content = typeof m.content === 'string' ? m.content : memoText
+        setMemoSaved(content)
+        setMemoText(content)
+        setMemoUpdatedAt(m.updated_at ?? memoUpdatedAt)
+        localStorage.removeItem(LEGACY_MEMO_KEY)
+      } else {
+        setMemoError('保存に失敗しました')
+      }
+    } catch {
+      setMemoError('保存に失敗しました')
+    }
+    setMemoSaving(false)
+  }
+
+  // 未保存のままページを閉じようとしたら警告する
+  useEffect(() => {
+    if (!memoDirty) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [memoDirty])
+
+  const changeMemoRows = (delta: number) => {
+    const next = Math.min(MEMO_ROWS_MAX, Math.max(MEMO_ROWS_MIN, memoRows + delta))
+    setMemoRows(next)
+    localStorage.setItem(MEMO_ROWS_KEY, String(next))
   }
 
   useEffect(() => {
@@ -325,17 +406,57 @@ export default function DashboardPage() {
 
       {/* メモ欄 */}
       <div className="bg-white rounded-xl p-3 shadow-sm">
-        <p className="text-xs font-semibold text-slate-400 mb-2">メモ</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-slate-400">メモ</p>
+          {/* 表示サイズの調整（スマホでも操作しやすいようにボタンで） */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => changeMemoRows(-2)}
+              disabled={memoRows <= MEMO_ROWS_MIN}
+              className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 text-sm disabled:opacity-30"
+              aria-label="メモ欄を小さくする"
+            >－</button>
+            <button
+              onClick={() => changeMemoRows(2)}
+              disabled={memoRows >= MEMO_ROWS_MAX}
+              className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 text-sm disabled:opacity-30"
+              aria-label="メモ欄を大きくする"
+            >＋</button>
+          </div>
+        </div>
         <textarea
-          value={scratchMemo}
-          onChange={(e) => {
-            setScratchMemo(e.target.value)
-            localStorage.setItem('kakeibo-scratchpad', e.target.value)
+          value={memoText}
+          onChange={(e) => setMemoText(e.target.value)}
+          onKeyDown={(e) => {
+            // Ctrl/⌘ + S でも保存できる
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+              e.preventDefault()
+              if (memoDirty && !memoSaving) saveMemo()
+            }
           }}
-          placeholder="自由にメモを入力..."
-          rows={4}
-          className="w-full text-sm border border-slate-200 rounded-lg p-2 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-300 text-slate-700 placeholder-slate-300"
+          disabled={!memoLoaded}
+          placeholder={memoLoaded ? '自由にメモを入力...' : '読み込み中...'}
+          rows={memoRows}
+          className="w-full text-sm border border-slate-200 rounded-lg p-2 resize-y focus:outline-none focus:ring-1 focus:ring-indigo-300 text-slate-700 placeholder-slate-300 disabled:bg-slate-50"
         />
+        <div className="flex items-center justify-between mt-2 gap-2">
+          <p className={`text-xs ${memoError ? 'text-red-500' : memoDirty ? 'text-amber-600' : 'text-slate-400'}`}>
+            {memoError
+              ? memoError
+              : memoDirty
+              ? '未保存の変更があります'
+              : memoUpdatedAt
+              ? `保存済み（${new Date(memoUpdatedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）`
+              : ''}
+          </p>
+          <button
+            onClick={() => saveMemo()}
+            disabled={!memoLoaded || !memoDirty || memoSaving}
+            className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold disabled:opacity-40 shrink-0"
+          >
+            {memoSaving ? '保存中...' : '保存'}
+          </button>
+        </div>
       </div>
     </div>
   )
