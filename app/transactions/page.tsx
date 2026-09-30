@@ -25,6 +25,23 @@ function labelDate(iso: string) {
   return `${m}/${d}(${WEEKDAYS[new Date(y, m - 1, d).getDay()]})`
 }
 
+// 支払い方法を1つの文字列で表す（"cash" / "card:<id>" / "points:<id>" / "bank:<id>"）
+function paymentKey(t: Transaction) {
+  if (t.credit_card_id) return `card:${t.credit_card_id}`
+  if (t.point_balance_id) return `points:${t.point_balance_id}`
+  if (t.bank_account_id) return `bank:${t.bank_account_id}`
+  return 'cash'
+}
+
+function paymentPayload(key: string) {
+  const [kind, id] = key.split(':')
+  return {
+    credit_card_id: kind === 'card' ? id : null,
+    point_balance_id: kind === 'points' ? id : null,
+    bank_account_id: kind === 'bank' ? id : null,
+  }
+}
+
 // 日付内の並び順（registered = 登録した順（新しい登録が上） / amount = 金額が大きい順）
 type SortMode = 'registered' | 'amount'
 const SORT_KEY = 'kakeibo-txn-sort'
@@ -43,6 +60,8 @@ export default function TransactionsPage() {
   const [editAmount, setEditAmount] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editMemo, setEditMemo] = useState('')
+  const [editPayment, setEditPayment] = useState('cash')
+  const [editCategory, setEditCategory] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>(() =>
     typeof window !== 'undefined' && localStorage.getItem(SORT_KEY) === 'amount' ? 'amount' : 'registered'
   )
@@ -122,10 +141,15 @@ export default function TransactionsPage() {
   const handleEditSave = async (id: string) => {
     const amount = parseInt(editAmount)
     if (isNaN(amount) || amount <= 0) return
+    const txn = transactions.find((t) => t.id === id)
+    // 振替は支払い方法・カテゴリを持たないので送らない
+    const extra = txn && txn.type !== 'transfer'
+      ? { category_id: editCategory || null, ...paymentPayload(editPayment) }
+      : {}
     await fetch('/api/transactions', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, amount, date: editDate, memo: editMemo }),
+      body: JSON.stringify({ id, amount, date: editDate, memo: editMemo, ...extra }),
     })
     setEditingId(null)
     fetchData()
@@ -362,23 +386,52 @@ export default function TransactionsPage() {
               <div key={t.id} className="flex items-center justify-between px-4 py-3 gap-2">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <span className="text-xl">{isTransfer ? '🔁' : t.categories?.icon ?? '📦'}</span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し（銀行→現金）' : '預け入れ（現金→銀行）') : (t.categories?.name ?? 'その他')}</p>
                     {/* 支払い先とメモは行を分ける（スマホでメモが見切れるため）。日付は見出しに出している */}
                     <p className="text-xs text-slate-400 truncate">{payLabel}</p>
                     {editingId === t.id ? (
+                      <div className="space-y-1 mt-1">
+                      {!isTransfer && (
+                        <>
+                          <select
+                            value={editPayment}
+                            onChange={(e) => setEditPayment(e.target.value)}
+                            className="w-full border border-indigo-300 rounded-lg px-1 py-0.5 text-xs bg-white"
+                          >
+                            <option value="cash">💴 現金</option>
+                            {t.type === 'expense' ? (
+                              <>
+                                {cards.map((c) => <option key={c.id} value={`card:${c.id}`}>💳 {c.name}</option>)}
+                                {points.map((p) => <option key={p.id} value={`points:${p.id}`}>⭐ {p.name}</option>)}
+                              </>
+                            ) : (
+                              accounts.map((a) => <option key={a.id} value={`bank:${a.id}`}>🏦 {a.name}</option>)
+                            )}
+                          </select>
+                          <select
+                            value={editCategory}
+                            onChange={(e) => setEditCategory(e.target.value)}
+                            className="w-full border border-indigo-300 rounded-lg px-1 py-0.5 text-xs bg-white"
+                          >
+                            <option value="">カテゴリなし</option>
+                            {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                          </select>
+                        </>
+                      )}
                       <input
                         type="text"
                         value={editMemo}
                         onChange={(e) => setEditMemo(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleEditSave(t.id); if (e.key === 'Escape') setEditingId(null) }}
                         placeholder="備考を入力"
-                        className="w-full border border-indigo-300 rounded-lg px-2 py-0.5 text-xs mt-1"
+                        className="w-full border border-indigo-300 rounded-lg px-2 py-0.5 text-xs"
                       />
+                      </div>
                     ) : t.memo && (
                       <p className="text-xs text-slate-500 break-words">📝 {t.memo}</p>
                     )}
-                    {!isTransfer && (
+                    {!isTransfer && editingId !== t.id && (
                       <select
                         value={t.category_id ?? ''}
                         onChange={(e) => handleCategoryChange(t.id, e.target.value)}
@@ -418,7 +471,7 @@ export default function TransactionsPage() {
                       <span className={`text-sm font-bold ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
                         {cashIncreases ? '+' : '-'}{yen(t.amount)}
                       </span>
-                      <button onClick={() => { setEditingId(t.id); setEditAmount(String(t.amount)); setEditDate(t.date); setEditMemo(t.memo ?? '') }} className="text-slate-300 hover:text-indigo-400 text-sm leading-none px-0.5">✏</button>
+                      <button onClick={() => { setEditingId(t.id); setEditAmount(String(t.amount)); setEditDate(t.date); setEditMemo(t.memo ?? ''); setEditPayment(paymentKey(t)); setEditCategory(t.category_id ?? '') }} className="text-slate-300 hover:text-indigo-400 text-sm leading-none px-0.5">✏</button>
                       <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-red-400 text-lg leading-none">×</button>
                     </>
                   )}
