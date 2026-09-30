@@ -42,6 +42,7 @@ export default function TransactionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState('')
   const [editDate, setEditDate] = useState('')
+  const [editMemo, setEditMemo] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>(() =>
     typeof window !== 'undefined' && localStorage.getItem(SORT_KEY) === 'amount' ? 'amount' : 'registered'
   )
@@ -124,7 +125,7 @@ export default function TransactionsPage() {
     await fetch('/api/transactions', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, amount, date: editDate }),
+      body: JSON.stringify({ id, amount, date: editDate, memo: editMemo }),
     })
     setEditingId(null)
     fetchData()
@@ -365,7 +366,16 @@ export default function TransactionsPage() {
                     <p className="text-sm font-medium truncate">{isTransfer ? (t.transfer_direction === 'withdraw' ? '引き出し（銀行→現金）' : '預け入れ（現金→銀行）') : (t.categories?.name ?? 'その他')}</p>
                     {/* 支払い先とメモは行を分ける（スマホでメモが見切れるため）。日付は見出しに出している */}
                     <p className="text-xs text-slate-400 truncate">{payLabel}</p>
-                    {t.memo && (
+                    {editingId === t.id ? (
+                      <input
+                        type="text"
+                        value={editMemo}
+                        onChange={(e) => setEditMemo(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleEditSave(t.id); if (e.key === 'Escape') setEditingId(null) }}
+                        placeholder="備考を入力"
+                        className="w-full border border-indigo-300 rounded-lg px-2 py-0.5 text-xs mt-1"
+                      />
+                    ) : t.memo && (
                       <p className="text-xs text-slate-500 break-words">📝 {t.memo}</p>
                     )}
                     {!isTransfer && (
@@ -408,7 +418,7 @@ export default function TransactionsPage() {
                       <span className={`text-sm font-bold ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
                         {cashIncreases ? '+' : '-'}{yen(t.amount)}
                       </span>
-                      <button onClick={() => { setEditingId(t.id); setEditAmount(String(t.amount)); setEditDate(t.date) }} className="text-slate-300 hover:text-indigo-400 text-sm leading-none px-0.5">✏</button>
+                      <button onClick={() => { setEditingId(t.id); setEditAmount(String(t.amount)); setEditDate(t.date); setEditMemo(t.memo ?? '') }} className="text-slate-300 hover:text-indigo-400 text-sm leading-none px-0.5">✏</button>
                       <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-red-400 text-lg leading-none">×</button>
                     </>
                   )}

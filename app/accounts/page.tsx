@@ -24,6 +24,39 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// 履歴の並び順（date = 日付の新しい順（APIの並び） / amount = 金額が大きい順）
+type HistorySort = 'date' | 'amount'
+const CARD_SORT_KEY = 'kakeibo-card-history-sort'
+const CASH_SORT_KEY = 'kakeibo-cash-history-sort'
+
+function loadSort(key: string): HistorySort {
+  return typeof window !== 'undefined' && localStorage.getItem(key) === 'amount' ? 'amount' : 'date'
+}
+
+function sortHistory(txns: Transaction[], mode: HistorySort): Transaction[] {
+  // 金額順のときだけ並べ替える（元の配列は変更しない）
+  return mode === 'amount' ? [...txns].sort((a, b) => b.amount - a.amount) : txns
+}
+
+function SortToggle({ value, onChange }: { value: HistorySort; onChange: (v: HistorySort) => void }) {
+  return (
+    <div className="flex rounded-lg overflow-hidden border border-slate-200 bg-white">
+      <button
+        onClick={() => onChange('date')}
+        className={`px-3 py-1 text-xs transition-colors ${value === 'date' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-500'}`}
+      >
+        日付順
+      </button>
+      <button
+        onClick={() => onChange('amount')}
+        className={`px-3 py-1 text-xs transition-colors ${value === 'amount' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-500'}`}
+      >
+        金額が大きい順
+      </button>
+    </div>
+  )
+}
+
 export default function AccountsPage() {
   const today = currentMonth()
 
@@ -56,6 +89,8 @@ export default function AccountsPage() {
   // 現金タブ
   const [cashMonth, setCashMonth] = useState(today)
   const [cashTxns, setCashTxns] = useState<Transaction[]>([])
+  const [cardSort, setCardSort] = useState<HistorySort>(() => loadSort(CARD_SORT_KEY))
+  const [cashSort, setCashSort] = useState<HistorySort>(() => loadSort(CASH_SORT_KEY))
   const [cashMonthYear, cashMonthMon] = cashMonth.split('-')
   const [editingCashTxnId, setEditingCashTxnId] = useState<string | null>(null)
   const [editCashAmount, setEditCashAmount] = useState('')
@@ -344,8 +379,13 @@ export default function AccountsPage() {
                 <p className="text-xl font-bold text-red-600">{yen(totalCardUsage)}</p>
               </div>
 
+              {/* 各カードの履歴の並び替え（カードの枠はそのまま、カード内で並べ替える） */}
+              <div className="flex justify-end">
+                <SortToggle value={cardSort} onChange={(v) => { setCardSort(v); localStorage.setItem(CARD_SORT_KEY, v) }} />
+              </div>
+
               {cards.map((card) => {
-                const txnsForCard = cardTabTxns.filter((t) => t.credit_card_id === card.id)
+                const txnsForCard = sortHistory(cardTabTxns.filter((t) => t.credit_card_id === card.id), cardSort)
                 const txnTotal = txnsForCard.reduce((s, t) => s + t.amount, 0)
                 const override = cardOverrides.find((o) => o.credit_card_id === card.id)
                 const displayAmount = override ? override.override_amount : txnTotal
@@ -580,8 +620,11 @@ export default function AccountsPage() {
 
                   return (
                     <>
+                      <div className="flex justify-end px-4 py-2 border-b border-slate-100">
+                        <SortToggle value={cashSort} onChange={(v) => { setCashSort(v); localStorage.setItem(CASH_SORT_KEY, v) }} />
+                      </div>
                       <div className="divide-y divide-slate-100">
-                        {cashTxns.map((t) => {
+                        {sortHistory(cashTxns, cashSort).map((t) => {
                           const isTransfer = t.type === 'transfer'
                           const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
                           return (

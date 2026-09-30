@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, amount, date, category_id } = await req.json()
+  const { id, amount, date, category_id, memo } = await req.json()
   const { data: txn } = await supabase.from('transactions').select('*').eq('id', id).single()
   if (!txn) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
@@ -120,6 +120,8 @@ export async function PATCH(req: NextRequest) {
   if (amount !== undefined) updates.amount = amount
   if (date !== undefined) updates.date = date
   if (category_id !== undefined) updates.category_id = category_id
+  // 備考は空文字なら削除扱い（null）にする
+  if (memo !== undefined) updates.memo = typeof memo === 'string' && memo.trim() ? memo.trim() : null
   const { data, error } = await supabase.from('transactions').update(updates).eq('id', id).select('*, categories(*), credit_cards(name, color), bank_accounts(name), point_balances(name)').single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
