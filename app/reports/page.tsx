@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { Transaction, Category, CreditCard, ExpectedIncome } from '@/lib/supabase'
+import { isNisaTxn, isNisaName } from '@/lib/report-rules'
 
 function formatYen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -42,7 +43,7 @@ function sideTotals(txns: Transaction[], catById: Map<string, Category>): SideTo
   return { income, expense }
 }
 
-type MonthSummary = { month: string; income: number; expense: number; txnIncome: number; salaryIncome: number }
+type MonthSummary = { month: string; income: number; expense: number; txnIncome: number; salaryIncome: number; nisa: number }
 
 export default function ReportsPage() {
   const currentYear = new Date().getFullYear()
@@ -75,17 +76,21 @@ export default function ReportsPage() {
       setCategories(Array.isArray(cats) ? cats : [])
       setCards(Array.isArray(cds) ? cds : [])
 
+      // NISA積立はレポートの支出から外して別枠で数える
       const txnMap: Record<string, Transaction[]> = {}
+      const nisaByMonth: Record<string, number> = {}
       const expectedMap: Record<string, ExpectedIncome[]> = {}
       months.forEach((m, i) => {
-        txnMap[m] = Array.isArray(txnsByMonth[i]) ? txnsByMonth[i] : []
+        const all: Transaction[] = Array.isArray(txnsByMonth[i]) ? txnsByMonth[i] : []
+        txnMap[m] = all.filter((t) => !isNisaTxn(t))
+        nisaByMonth[m] = all.filter(isNisaTxn).reduce((s, t) => s + t.amount, 0)
         expectedMap[m] = Array.isArray(expectedByMonth[i]) ? expectedByMonth[i] : []
       })
       setAllTxns(txnMap)
       setAllExpectedIncomes(expectedMap)
 
       const summaries: MonthSummary[] = months.map((month, i) => {
-        const txns: Transaction[] = Array.isArray(txnsByMonth[i]) ? txnsByMonth[i] : []
+        const txns: Transaction[] = txnMap[month]
         const expected: ExpectedIncome[] = Array.isArray(expectedByMonth[i]) ? expectedByMonth[i] : []
         const txnIncome = txns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0)
         const salaryIncome = expected.reduce((s, e) => s + e.amount, 0)
@@ -95,6 +100,7 @@ export default function ReportsPage() {
           salaryIncome,
           income: txnIncome + salaryIncome,
           expense: txns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
+          nisa: nisaByMonth[month],
         }
       })
       setMonthlySummaries(summaries)
@@ -107,7 +113,7 @@ export default function ReportsPage() {
   const selectedExpectedIncomes = allExpectedIncomes[selectedMonth] ?? []
 
   const selectedSummary = monthlySummaries.find((s) => s.month === selectedMonth) ?? {
-    income: 0, expense: 0, month: selectedMonth, txnIncome: 0, salaryIncome: 0,
+    income: 0, expense: 0, month: selectedMonth, txnIncome: 0, salaryIncome: 0, nisa: 0,
   }
 
   const uncategorizedCategory = (type: 'income' | 'expense'): Category => ({
@@ -139,10 +145,11 @@ export default function ReportsPage() {
     income: monthlySummaries.reduce((s, m) => s + m.income, 0),
     expense: monthlySummaries.reduce((s, m) => s + m.expense, 0),
     salary: monthlySummaries.reduce((s, m) => s + m.salaryIncome, 0),
+    nisa: monthlySummaries.reduce((s, m) => s + m.nisa, 0),
   }
 
   // 平均は「記録を始めた月」から数える（例：4月から使い始めた年は 4月〜今月）
-  const firstActiveIdx = monthlySummaries.findIndex((s) => s.income > 0 || s.expense > 0)
+  const firstActiveIdx = monthlySummaries.findIndex((s) => s.income > 0 || s.expense > 0 || s.nisa > 0)
   const activeSummaries = firstActiveIdx >= 0 ? monthlySummaries.slice(firstActiveIdx) : monthlySummaries
   const activeMonthCount = Math.max(activeSummaries.length, 1)
   const activeRangeLabel = activeSummaries.length > 0
@@ -156,7 +163,7 @@ export default function ReportsPage() {
 
   // 年間のカテゴリ別支出（多い順）
   const yearExpenseByCategory = categories
-    .filter((c) => c.type === 'expense')
+    .filter((c) => c.type === 'expense' && !isNisaName(c.name))
     .map((cat) => ({
       category: cat,
       total: months.reduce((sum, m) => sum + (allTxns[m] ?? []).filter((t) => t.type === 'expense' && t.category_id === cat.id).reduce((s, t) => s + t.amount, 0), 0),
@@ -276,6 +283,9 @@ export default function ReportsPage() {
             {hasSideCategories && (yearSide.income > 0 || yearSide.expense > 0) && (
               <SideBreakdown side={yearSide} income={yearTotal.income} expense={yearTotal.expense} />
             )}
+            {yearTotal.nisa > 0 && (
+              <NisaRow amount={yearTotal.nisa} avg={Math.round(yearTotal.nisa / activeMonthCount)} />
+            )}
             {activeRangeLabel && (
               <p className="text-xs text-slate-400 text-center mt-2">月平均は{activeRangeLabel}で計算</p>
             )}
@@ -359,6 +369,11 @@ export default function ReportsPage() {
                 </p>
               </div>
             </div>
+            {selectedSummary.nisa > 0 && (
+              <div className="mb-3 -mt-1">
+                <NisaRow amount={selectedSummary.nisa} />
+              </div>
+            )}
             {hasSideCategories && (monthSide.income > 0 || monthSide.expense > 0) && (
               <div className="mb-4">
                 <SideBreakdown side={monthSide} income={selectedSummary.income} expense={selectedSummary.expense} />
@@ -578,6 +593,19 @@ function SideBreakdown({ side, income, expense }: { side: SideTotals; income: nu
         <span className="text-slate-500">投資・商材・錬金を除いた支出</span>
         <span className="font-medium text-red-700">{formatYen(expense - side.expense)}</span>
       </div>
+    </div>
+  )
+}
+
+// NISA積立（支出・収支には含めない別枠）
+function NisaRow({ amount, avg }: { amount: number; avg?: number }) {
+  return (
+    <div className="pt-2 mt-2 border-t border-slate-100 flex justify-between items-baseline text-xs">
+      <span className="text-slate-500">NISA積立（別枠・収支に含めない）</span>
+      <span className="text-right">
+        <span className="font-bold text-indigo-700">{formatYen(amount)}</span>
+        {avg !== undefined && <span className="block text-[11px] text-slate-400">月平均 {formatYen(avg)}</span>}
+      </span>
     </div>
   )
 }

@@ -13,6 +13,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // サブスクの自動登録を済ませてから画面を出す（請求日が来たサブスクが残高や一覧に反映された状態で開く）
+  const [subsChecked, setSubsChecked] = useState(false)
 
   // ログイン状態はサーバー（Cookie）で確認する。PINはブラウザに置かない
   useEffect(() => {
@@ -22,6 +24,18 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       .then((d) => setAuthed(!!d.authed))
       .catch(() => setAuthed(false))
   }, [authed])
+
+  useEffect(() => {
+    if (authed !== true || subsChecked) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (localStorage.getItem(AUTH_KEY) === 'demo') { setSubsChecked(true); return }
+    // 時間がかかっても4秒で打ち切って画面を出す
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 4000)
+    fetch('/api/subscriptions/auto-apply', { method: 'POST', signal: ctrl.signal })
+      .catch(() => {})
+      .finally(() => { clearTimeout(timer); setSubsChecked(true) })
+  }, [authed, subsChecked])
 
   useEffect(() => {
     const handler = (e: WheelEvent) => {
@@ -102,6 +116,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       </div>
     )
   }
+
+  if (!subsChecked) return null
 
   return <>{children}</>
 }
