@@ -98,6 +98,27 @@ export default function CategoriesPage() {
   const incomeCategories = categories.filter((c) => c.type === 'income')
   const expenseCategories = categories.filter((c) => c.type === 'expense')
 
+  // 並び順を1つ上・下に動かす（収支入力などのプルダウンもこの順番になる）
+  const [orderError, setOrderError] = useState(false)
+  const handleMove = async (cat: Category, dir: -1 | 1) => {
+    const same = categories.filter((c) => c.type === cat.type)
+    const i = same.findIndex((c) => c.id === cat.id)
+    const j = i + dir
+    if (j < 0 || j >= same.length) return
+    const moved = [...same]
+    ;[moved[i], moved[j]] = [moved[j], moved[i]]
+    // APIと同じく「支出 → 収入」の順で全体を組み直して保存する
+    const others = categories.filter((c) => c.type !== cat.type)
+    const merged = cat.type === 'expense' ? [...moved, ...others] : [...others, ...moved]
+    setCategories(merged)
+    const res = await fetch('/api/categories/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: merged.map((c) => c.id) }),
+    }).catch(() => null)
+    setOrderError(!res || !res.ok)
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -211,10 +232,14 @@ export default function CategoriesPage() {
         <div className="text-center py-8 text-slate-400">読み込み中...</div>
       ) : (
         <>
+          {orderError && (
+            <p className="text-xs text-red-500 text-center">並び順を保存できませんでした。もう一度試してください</p>
+          )}
+          <p className="text-xs text-slate-400">▲▼ で並び順を変えられます。収支入力などの選択肢もこの順番になります。</p>
           {/* 支出カテゴリ */}
-          <Section title="支出カテゴリ" categories={expenseCategories} onEdit={handleEdit} onDelete={handleDelete} />
+          <Section title="支出カテゴリ" categories={expenseCategories} onEdit={handleEdit} onDelete={handleDelete} onMove={handleMove} />
           {/* 収入カテゴリ */}
-          <Section title="収入カテゴリ" categories={incomeCategories} onEdit={handleEdit} onDelete={handleDelete} />
+          <Section title="収入カテゴリ" categories={incomeCategories} onEdit={handleEdit} onDelete={handleDelete} onMove={handleMove} />
         </>
       )}
     </div>
@@ -226,11 +251,13 @@ function Section({
   categories,
   onEdit,
   onDelete,
+  onMove,
 }: {
   title: string
   categories: Category[]
   onEdit: (cat: Category) => void
   onDelete: (id: string) => void
+  onMove: (cat: Category, dir: -1 | 1) => void
 }) {
   if (categories.length === 0) return null
   return (
@@ -239,8 +266,23 @@ function Section({
         <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{title}</h2>
       </div>
       <div className="divide-y divide-slate-100">
-        {categories.map((cat) => (
-          <div key={cat.id} className="flex items-center px-4 py-3 gap-3">
+        {categories.map((cat, i) => (
+          <div key={cat.id} className="flex items-center pl-2 pr-4 py-3 gap-3">
+            {/* 並び替え */}
+            <div className="flex flex-col shrink-0">
+              <button
+                onClick={() => onMove(cat, -1)}
+                disabled={i === 0}
+                className="w-7 h-5 flex items-center justify-center text-slate-400 hover:text-indigo-600 disabled:opacity-20 text-xs"
+                aria-label={`${cat.name}を上へ`}
+              >▲</button>
+              <button
+                onClick={() => onMove(cat, 1)}
+                disabled={i === categories.length - 1}
+                className="w-7 h-5 flex items-center justify-center text-slate-400 hover:text-indigo-600 disabled:opacity-20 text-xs"
+                aria-label={`${cat.name}を下へ`}
+              >▼</button>
+            </div>
             <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
             <span className="text-lg">{cat.icon}</span>
             <div className="flex-1 min-w-0">
