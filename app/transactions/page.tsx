@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import type { Transaction, Category, CreditCard, BankAccount, PointBalance } from '@/lib/supabase'
 import AmountSteps, { addAmount } from '@/components/AmountSteps'
 import { EMPTY_DEFAULTS, normalizeDefaults, visibleCategories, type InputDefaults } from '@/lib/input-defaults'
+import { loadEntryCache, saveEntryCache } from '@/lib/entry-cache'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -88,9 +89,10 @@ const SORT_KEY = 'kakeibo-txn-sort'
 export default function TransactionsPage() {
   const [month, setMonth] = useState(currentMonth())
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [cards, setCards] = useState<CreditCard[]>([])
-  const [accounts, setAccounts] = useState<BankAccount[]>([])
+  // 前回この端末で読み込んだ内容があれば、それで先に表示する（読み込み待ちをなくす）
+  const [categories, setCategories] = useState<Category[]>(() => loadEntryCache()?.categories ?? [])
+  const [cards, setCards] = useState<CreditCard[]>(() => loadEntryCache()?.cards ?? [])
+  const [accounts, setAccounts] = useState<BankAccount[]>(() => loadEntryCache()?.accounts ?? [])
   const [points, setPoints] = useState<PointBalance[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -105,36 +107,50 @@ export default function TransactionsPage() {
     typeof window !== 'undefined' && localStorage.getItem(SORT_KEY) === 'amount' ? 'amount' : 'registered'
   )
 
-  const [defaults, setDefaults] = useState<InputDefaults>(EMPTY_DEFAULTS)
-  const [form, setForm] = useState<EntryForm>(() => blankForm('expense', EMPTY_DEFAULTS, { cards: [], accounts: [], categories: [] }))
+  const [defaults, setDefaults] = useState<InputDefaults>(() => loadEntryCache()?.defaults ?? EMPTY_DEFAULTS)
+  // 自動で入れた入力欄の状態。利用者がまだ触っていなければ、最新の初期値で入れ直してよい
+  const [initialForm] = useState<EntryForm>(() => {
+    const c = loadEntryCache()
+    return blankForm('expense', c?.defaults ?? EMPTY_DEFAULTS, c ?? { cards: [], accounts: [], categories: [] })
+  })
+  const autoForm = useRef<EntryForm>(initialForm)
+  const [form, setForm] = useState<EntryForm>(initialForm)
   const lists = { cards, accounts, categories }
 
   // silent=true のときは「読み込み中」を出さずに裏で取り直す（スクロール位置を保つ）
   const fetchData = (silent = false) => {
     if (!silent) setLoading(true)
+    // 取引一覧と、入力欄の選択肢・初期値は別々に読む（入力欄は一覧の読み込みを待たない）
+    fetch(`/api/transactions?month=${month}`).then((r) => r.json()).then((txns) => {
+      setTransactions(Array.isArray(txns) ? txns : [])
+      setLoading(false)
+    })
     Promise.all([
-      fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
       fetch('/api/categories').then((r) => r.json()),
       fetch('/api/credit-cards').then((r) => r.json()),
       fetch('/api/bank-accounts').then((r) => r.json()),
       fetch('/api/point-balances').then((r) => r.json()),
       fetch('/api/settings').then((r) => r.json()).catch(() => null),
-    ]).then(([txns, cats, cds, accs, pts, st]) => {
+    ]).then(([cats, cds, accs, pts, st]) => {
       const nextLists = {
         categories: Array.isArray(cats) ? cats : [],
         cards: Array.isArray(cds) ? cds : [],
         accounts: Array.isArray(accs) ? accs : [],
       }
       const d = normalizeDefaults(st)
-      setTransactions(Array.isArray(txns) ? txns : [])
       setCategories(nextLists.categories)
       setCards(nextLists.cards)
       setAccounts(nextLists.accounts)
       setPoints(Array.isArray(pts) ? pts : [])
       setDefaults(d)
-      // まだ何も入力していなければ、初期値を入れる
-      setForm((f) => (f.amount === '' && f.memo === '' ? { ...blankForm(f.type, d, nextLists), date: f.date } : f))
-      setLoading(false)
+      saveEntryCache({ ...nextLists, defaults: d })
+      // 利用者がまだ入力欄を触っていなければ、最新の初期値で入れ直す
+      setForm((f) => {
+        if (f !== autoForm.current) return f
+        const next = { ...blankForm(f.type, d, nextLists), date: f.date }
+        autoForm.current = next
+        return next
+      })
     })
   }
 
@@ -181,7 +197,9 @@ export default function TransactionsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    setForm(blankForm('expense', defaults, lists))
+    const next = blankForm('expense', defaults, lists)
+    autoForm.current = next
+    setForm(next)
     setShowForm(false)
     setSubmitting(false)
     fetchData(true)

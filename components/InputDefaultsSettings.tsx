@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { BankAccount, Category, CreditCard } from '@/lib/supabase'
 import { EMPTY_DEFAULTS, normalizeDefaults, type InputDefaults } from '@/lib/input-defaults'
+import { saveEntryCache } from '@/lib/entry-cache'
 
 // マスタ設定 > 入力の初期値
 // 収支を入力するときに、最初から選ばれている支払い方法・カード・カテゴリを決める（全端末共通）
@@ -29,6 +30,8 @@ export default function InputDefaultsSettings({ cards, accounts }: { cards: Cred
   const update = async (patch: Partial<InputDefaults>) => {
     const next = { ...d, ...patch }
     setD(next)
+    // 収支入力がすぐ新しい初期値で開くように、この端末の控えも更新する
+    saveEntryCache({ defaults: next })
     setStatus('saving')
     const res = await fetch('/api/settings', {
       method: 'PUT',
