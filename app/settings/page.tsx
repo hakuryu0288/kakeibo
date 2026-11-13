@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { BankAccount, CreditCard } from '@/lib/supabase'
+import type { BankAccount, CreditCard } from '@/lib/supabase'
 
 const CARD_COLORS = ['#6366f1','#ef4444','#f97316','#22c55e','#06b6d4','#8b5cf6','#ec4899','#eab308']
 

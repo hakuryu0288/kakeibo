@@ -30,8 +30,10 @@ export default function MenuPage() {
     window.location.reload()
   }
 
-  const logout = () => {
+  const logout = async () => {
     localStorage.removeItem(AUTH_KEY)
+    // ログイン用のCookieはサーバー側で消す
+    await fetch('/api/auth', { method: 'DELETE' }).catch(() => {})
     window.location.reload()
   }
 

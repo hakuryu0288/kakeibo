@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, Category, CreditCard } from '@/lib/supabase'
+import type { Transaction, Category, CreditCard } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -132,7 +132,8 @@ export default function SummaryPage() {
   // 支払い方法別の支出内訳
   const byCard = expenseTxns.filter((t) => t.credit_card_id).reduce((s, t) => s + t.amount, 0)
   const byPoints = expenseTxns.filter((t) => t.point_balance_id).reduce((s, t) => s + t.amount, 0)
-  const byCash = expense - byCard - byPoints
+  const byBank = expenseTxns.filter((t) => !t.credit_card_id && !t.point_balance_id && t.bank_account_id).reduce((s, t) => s + t.amount, 0)
+  const byCash = expense - byCard - byPoints - byBank
 
   // カテゴリ別の支出内訳（多い順）
   const categoryBreakdown = categories
@@ -278,6 +279,12 @@ export default function SummaryPage() {
                   <span className="text-slate-600">💴 現金</span>
                   <span className="font-medium">{yen(byCash)}</span>
                 </div>
+                {byBank > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">🏦 銀行</span>
+                    <span className="font-medium">{yen(byBank)}</span>
+                  </div>
+                )}
                 {byPoints > 0 && (
                   <div className="flex justify-between">
                     <span className="text-slate-600">⭐ ポイント</span>

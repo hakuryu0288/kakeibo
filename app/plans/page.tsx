@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Subscription, PlannedExpense, WishItem, CreditCard, FixedCost, BankAccount, Transaction, Category } from '@/lib/supabase'
+import type { Subscription, PlannedExpense, WishItem, CreditCard, FixedCost, BankAccount, Transaction, Category } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)

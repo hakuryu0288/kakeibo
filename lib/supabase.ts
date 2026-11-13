@@ -4,8 +4,10 @@ let _client: SupabaseClient | null = null
 
 export function getSupabase(): SupabaseClient {
   if (!_client) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    // サーバー（APIルート）からだけ使う。service role キーが設定されていればそれを使い、
+    // データベース側でRLSを有効にして、公開用のanonキーでは直接読めないようにできる
+    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (!url || !key) throw new Error('Supabase環境変数が設定されていません。.env.localを確認してください。')
     _client = createClient(url, key)
   }
@@ -212,6 +214,8 @@ export type MonthlyClosing = {
       card_bills: Array<{ credit_card_id: string; card_name: string; amount: number; bank_account_id: string; bank_name: string | null }>
       fixed_costs: Array<{ fixed_cost_id: string; name: string; amount: number; bank_account_id: string; bank_name: string | null }>
     }
+    // 残高を変えずに処理済みにした月
+    record_only?: boolean
   }
   processed_at: string
   created_at: string

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Transaction, Category, CreditCard, ExpectedIncome } from '@/lib/supabase'
+import type { Transaction, Category, CreditCard, ExpectedIncome } from '@/lib/supabase'
 
 function formatYen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -20,6 +20,26 @@ function getYearMonths(year: number): string[] {
     if (ym <= currentYM) months.push(ym)
   }
   return months
+}
+
+// 「商材」「錬金」の収入と、その元手・立て替えを入れる「投資・商材・錬金」の支出。
+// 名前で見分ける（「・」や空白の有無は問わない）
+const normName = (name: string) => name.replace(/[\s・･/／、,]/g, '')
+const SIDE_INCOME_NAMES = ['商材', '錬金']
+const SIDE_EXPENSE_NAME = '投資商材錬金'
+const isSideIncome = (c?: Category | null) => !!c && c.type === 'income' && SIDE_INCOME_NAMES.includes(normName(c.name))
+const isSideExpense = (c?: Category | null) => !!c && c.type === 'expense' && normName(c.name) === SIDE_EXPENSE_NAME
+
+type SideTotals = { income: number; expense: number }
+function sideTotals(txns: Transaction[], catById: Map<string, Category>): SideTotals {
+  let income = 0
+  let expense = 0
+  for (const t of txns) {
+    const c = t.category_id ? catById.get(t.category_id) : undefined
+    if (t.type === 'income' && isSideIncome(c)) income += t.amount
+    if (t.type === 'expense' && isSideExpense(c)) expense += t.amount
+  }
+  return { income, expense }
 }
 
 type MonthSummary = { month: string; income: number; expense: number; txnIncome: number; salaryIncome: number }
@@ -121,7 +141,34 @@ export default function ReportsPage() {
     salary: monthlySummaries.reduce((s, m) => s + m.salaryIncome, 0),
   }
 
-  const maxExpense = Math.max(...monthlySummaries.map((s) => s.expense), 1)
+  // 平均は「記録を始めた月」から数える（例：4月から使い始めた年は 4月〜今月）
+  const firstActiveIdx = monthlySummaries.findIndex((s) => s.income > 0 || s.expense > 0)
+  const activeSummaries = firstActiveIdx >= 0 ? monthlySummaries.slice(firstActiveIdx) : monthlySummaries
+  const activeMonthCount = Math.max(activeSummaries.length, 1)
+  const activeRangeLabel = activeSummaries.length > 0
+    ? `${Number(activeSummaries[0].month.split('-')[1])}月〜${Number(activeSummaries[activeSummaries.length - 1].month.split('-')[1])}月の${activeSummaries.length}か月`
+    : ''
+
+  const catById = new Map(categories.map((c) => [c.id, c]))
+  const hasSideCategories = categories.some((c) => isSideIncome(c) || isSideExpense(c))
+  const yearSide = sideTotals(months.flatMap((m) => allTxns[m] ?? []), catById)
+  const monthSide = sideTotals(selectedTxns, catById)
+
+  // 年間のカテゴリ別支出（多い順）
+  const yearExpenseByCategory = categories
+    .filter((c) => c.type === 'expense')
+    .map((cat) => ({
+      category: cat,
+      total: months.reduce((sum, m) => sum + (allTxns[m] ?? []).filter((t) => t.type === 'expense' && t.category_id === cat.id).reduce((s, t) => s + t.amount, 0), 0),
+    }))
+    .concat([{
+      category: uncategorizedCategory('expense'),
+      total: months.reduce((sum, m) => sum + (allTxns[m] ?? []).filter((t) => t.type === 'expense' && !t.category_id).reduce((s, t) => s + t.amount, 0), 0),
+    }])
+    .filter((cb) => cb.total > 0)
+    .sort((a, b) => b.total - a.total)
+
+  const maxExpense = Math.max(...activeSummaries.map((s) => s.expense), 1)
   const [year, mon] = selectedMonth ? selectedMonth.split('-') : ['', '']
 
   const incomeCatBreakdown = categories
@@ -175,8 +222,8 @@ export default function ReportsPage() {
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-700 mb-3">支出推移（{selectedYear}年）</h2>
             <div className="overflow-x-auto">
-              <div className="flex items-end gap-1" style={{ minWidth: `${months.length * 40}px` }}>
-                {monthlySummaries.map((s) => {
+              <div className="flex items-end gap-1" style={{ minWidth: `${activeSummaries.length * 40}px` }}>
+                {activeSummaries.map((s) => {
                   const pct = (s.expense / maxExpense) * 100
                   const isSelected = s.month === selectedMonth
                   const [, m] = s.month.split('-')
@@ -226,7 +273,40 @@ export default function ReportsPage() {
                 <p className="text-xs text-slate-500 text-center">うち見込み給与：<span className="font-medium text-green-600">{formatYen(yearTotal.salary)}</span></p>
               </div>
             )}
+            {hasSideCategories && (yearSide.income > 0 || yearSide.expense > 0) && (
+              <SideBreakdown side={yearSide} income={yearTotal.income} expense={yearTotal.expense} />
+            )}
+            {activeRangeLabel && (
+              <p className="text-xs text-slate-400 text-center mt-2">月平均は{activeRangeLabel}で計算</p>
+            )}
           </div>
+
+          {/* 年間のカテゴリ別支出 */}
+          {yearExpenseByCategory.length > 0 && (
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-700 mb-3">カテゴリ別の支出（{selectedYear}年）</h2>
+              <div className="space-y-2.5">
+                {yearExpenseByCategory.map((cb) => {
+                  const pct = yearTotal.expense > 0 ? (cb.total / yearTotal.expense) * 100 : 0
+                  return (
+                    <div key={cb.category.id || 'none'}>
+                      <div className="flex justify-between items-baseline text-xs mb-1 gap-2">
+                        <span className="truncate">{cb.category.icon} {cb.category.name}</span>
+                        <span className="flex gap-2 shrink-0 items-baseline">
+                          <span className="text-slate-400">{formatNumber(pct)}%</span>
+                          <span className="font-medium">{formatYen(cb.total)}</span>
+                        </span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: cb.category.color }} />
+                      </div>
+                      <p className="text-[11px] text-slate-400 text-right mt-0.5">月平均 {formatYen(Math.round(cb.total / activeMonthCount))}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* 月次収支一覧 */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -234,7 +314,7 @@ export default function ReportsPage() {
               <h2 className="text-sm font-semibold text-slate-700">月次収支一覧</h2>
             </div>
             <div className="divide-y divide-slate-50">
-              {monthlySummaries.map((s) => {
+              {activeSummaries.map((s) => {
                 const net = s.income - s.expense
                 const [, m] = s.month.split('-')
                 const isSelected = s.month === selectedMonth
@@ -279,6 +359,11 @@ export default function ReportsPage() {
                 </p>
               </div>
             </div>
+            {hasSideCategories && (monthSide.income > 0 || monthSide.expense > 0) && (
+              <div className="mb-4">
+                <SideBreakdown side={monthSide} income={selectedSummary.income} expense={selectedSummary.expense} />
+              </div>
+            )}
 
             {/* カテゴリ別 / カード別 / 収入内訳 タブ */}
             <div className="flex gap-1 mb-3">
@@ -417,7 +502,7 @@ export default function ReportsPage() {
                       .reduce((a, t) => a + t.amount, 0)
                   }, 0)
                   if (annual === 0) return null
-                  const avg = Math.round(annual / monthlySummaries.length)
+                  const avg = Math.round(annual / activeMonthCount)
                   return (
                     <div key={card.id} className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
@@ -448,7 +533,7 @@ export default function ReportsPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-green-600">{formatYen(yearTotal.salary)}</p>
-                      <p className="text-xs text-slate-400">月平均 {formatYen(Math.round(yearTotal.salary / Math.max(months.length, 1)))}</p>
+                      <p className="text-xs text-slate-400">月平均 {formatYen(Math.round(yearTotal.salary / activeMonthCount))}</p>
                     </div>
                   </div>
                 )}
@@ -460,7 +545,7 @@ export default function ReportsPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-green-600">{formatYen(cb.total)}</p>
-                      <p className="text-xs text-slate-400">月平均 {formatYen(Math.round(cb.total / Math.max(months.length, 1)))}</p>
+                      <p className="text-xs text-slate-400">月平均 {formatYen(Math.round(cb.total / activeMonthCount))}</p>
                     </div>
                   </div>
                 ))}
@@ -469,6 +554,30 @@ export default function ReportsPage() {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// 商材・錬金の損益と、それを除いた収入・支出
+function SideBreakdown({ side, income, expense }: { side: SideTotals; income: number; expense: number }) {
+  const profit = side.income - side.expense
+  return (
+    <div className="pt-2 mt-2 border-t border-slate-100 space-y-1 text-xs">
+      <div className="flex justify-between">
+        <span className="text-slate-500">商材・錬金の損益</span>
+        <span className={`font-bold ${profit >= 0 ? 'text-indigo-700' : 'text-orange-700'}`}>{profit >= 0 ? '+' : ''}{formatYen(profit)}</span>
+      </div>
+      <p className="text-[11px] text-slate-400 text-right">
+        （商材・錬金 {formatYen(side.income)} − 投資・商材・錬金 {formatYen(side.expense)}）
+      </p>
+      <div className="flex justify-between">
+        <span className="text-slate-500">商材・錬金を除いた収入</span>
+        <span className="font-medium text-green-700">{formatYen(income - side.income)}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-slate-500">投資・商材・錬金を除いた支出</span>
+        <span className="font-medium text-red-700">{formatYen(expense - side.expense)}</span>
+      </div>
     </div>
   )
 }

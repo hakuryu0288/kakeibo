@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ResaleItem, NisaSettings, BankAccount, CreditCard, FixedCost, CardMonthlyOverride, Transaction, ExpectedIncome } from '@/lib/supabase'
+import type { ResaleItem, NisaSettings, BankAccount, CreditCard, FixedCost, CardMonthlyOverride, Transaction, ExpectedIncome } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -53,7 +53,14 @@ const defaultResaleForm: ResaleFormState = { name: '', quantity: '1', purchase_p
 
 export default function AssetsPage() {
   const today = currentMonth()
-  const [tab, setTab] = useState<'points' | 'nisa' | 'resale' | 'bank'>('points')
+  // 最初に開くタブは商材
+  const [tab, setTab] = useState<'points' | 'nisa' | 'resale' | 'bank'>('resale')
+  // ホームから ?tab=nisa などで直接開ける
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (t === 'points' || t === 'nisa' || t === 'bank' || t === 'resale') setTab(t)
+  }, [])
 
   // 商材
   const [resaleItems, setResaleItems] = useState<ResaleItem[]>([])
@@ -197,7 +204,7 @@ export default function AssetsPage() {
       <h1 className="text-xl font-bold">資産管理</h1>
 
       <div className="grid grid-cols-4 gap-1 bg-slate-100 rounded-xl p-1">
-        {([['points','ポイント'],['nisa','NISA'],['resale','商材'],['bank','銀行']] as const).map(([key, label]) => (
+        {([['resale','商材'],['nisa','NISA'],['bank','銀行'],['points','ポイント']] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${tab === key ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
             {label}

@@ -124,15 +124,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { month } = await req.json()
+  // record_only: 銀行残高は変えずに「処理済み」の記録だけ残す（月次処理を始める前の月を、今の数値のまま締めるため）
+  const { month, record_only } = await req.json()
+  const recordOnly = record_only === true
 
   const { data: existing } = await supabase.from('monthly_closings').select('id').eq('month', month).maybeSingle()
   if (existing) return NextResponse.json({ error: 'この月はすでに月次処理済みです' }, { status: 400 })
 
   const { bank_deltas, income_ids, details, bankAccounts } = await buildProcess(month)
 
-  // 銀行残高を更新
-  for (const { bank_account_id, delta } of bank_deltas) {
+  // 銀行残高を更新（記録だけの場合は何もしない）
+  for (const { bank_account_id, delta } of recordOnly ? [] : bank_deltas) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const acc = (bankAccounts as any[]).find((a: any) => a.id === bank_account_id)
     if (!acc) continue
@@ -146,7 +148,10 @@ export async function POST(req: NextRequest) {
       .in('id', income_ids)
   }
 
-  const snapshot = { bank_deltas, income_ids, details }
+  // 記録だけの場合は残高の変動を0件として保存するので、取り消しても残高は動かない
+  const snapshot = recordOnly
+    ? { bank_deltas: [], income_ids, details, record_only: true }
+    : { bank_deltas, income_ids, details }
   const { data, error } = await supabase.from('monthly_closings').insert({ month, snapshot }).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data, { status: 201 })

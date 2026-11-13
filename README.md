@@ -52,8 +52,13 @@ cp .env.example .env.local
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxxxxxxxxxxxxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-NEXT_PUBLIC_APP_PASSWORD=あなたの4桁PIN
+SUPABASE_SERVICE_ROLE_KEY=service_roleキー（推奨）
+APP_PASSWORD=ログイン用のパスワード
 ```
+
+- `APP_PASSWORD` と `SUPABASE_SERVICE_ROLE_KEY` はサーバーだけで使います。`NEXT_PUBLIC_` を付けないでください（付けるとブラウザに送られます）。
+- パスワードはサーバーで照合し、ログインした端末にはCookieを渡します。API（`/api/*`）はCookieがないと401を返します。
+- `SUPABASE_SERVICE_ROLE_KEY` を設定したら、Supabaseで全テーブルのRLSを有効にすると、公開されているanonキーではデータを直接読めなくなります（`supabase_enable_rls.sql`）。
 
 ### 4. 開発サーバーを起動
 
