@@ -12,7 +12,7 @@ const menuItems = [
   { href: '/investments', icon: '📈', label: '投資・相場', desc: '相場のグラフと保有銘柄' },
   { href: '/calendar', icon: '📅', label: 'カレンダー', desc: '日別収支とメモ' },
   { href: '/categories', icon: '⚙️', label: 'カテゴリ設定', desc: 'カテゴリと予算上限の管理' },
-  { href: '/settings', icon: '🗂️', label: 'マスタ設定', desc: 'クレカ・口座の追加・編集・削除' },
+  { href: '/settings', icon: '🗂️', label: 'マスタ設定', desc: 'クレカ・口座の管理、収支入力の初期値' },
 ]
 
 export default function MenuPage() {

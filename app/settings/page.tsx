@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { BankAccount, CreditCard } from '@/lib/supabase'
+import InputDefaultsSettings from '@/components/InputDefaultsSettings'
 
 const CARD_COLORS = ['#6366f1','#ef4444','#f97316','#22c55e','#06b6d4','#8b5cf6','#ec4899','#eab308']
 
@@ -9,7 +10,13 @@ export default function SettingsPage() {
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'card' | 'bank'>('card')
+  const [tab, setTab] = useState<'card' | 'bank' | 'defaults'>('card')
+  // ?tab=defaults などで直接開ける
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (t === 'card' || t === 'bank' || t === 'defaults') setTab(t)
+  }, [])
 
   const [cardForm, setCardForm] = useState({ id: '', name: '', bank_account_id: '', closing_day: '15', billing_day: '27', color: '#6366f1' })
   const [showCardForm, setShowCardForm] = useState(false)
@@ -78,10 +85,10 @@ export default function SettingsPage() {
       <h1 className="text-xl font-bold">マスタ設定</h1>
 
       <div className="flex rounded-xl overflow-hidden border border-slate-200 bg-white">
-        {(['card', 'bank'] as const).map((t) => (
+        {(['card', 'bank', 'defaults'] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 text-sm font-medium transition-colors ${tab === t ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>
-            {t === 'card' ? '💳 クレカ管理' : '🏦 口座管理'}
+            className={`flex-1 py-2 text-xs sm:text-sm font-medium transition-colors ${tab === t ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>
+            {t === 'card' ? '💳 クレカ' : t === 'bank' ? '🏦 口座' : '✏️ 入力の初期値'}
           </button>
         ))}
       </div>
@@ -207,6 +214,9 @@ export default function SettingsPage() {
               )}
             </div>
           )}
+
+          {/* 収支入力の初期値 */}
+          {tab === 'defaults' && <InputDefaultsSettings cards={cards} accounts={accounts} />}
         </>
       )}
     </div>

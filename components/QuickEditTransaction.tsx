@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { Category } from '@/lib/supabase'
+import AmountSteps, { addAmount } from '@/components/AmountSteps'
 
 export type QuickEditable = {
   id: string
@@ -72,9 +73,9 @@ export default function QuickEditTransaction({
           onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onCancel() }}
           className="border border-indigo-300 rounded-lg px-2 py-1.5 text-sm text-right"
           min={1}
-          autoFocus
         />
       </div>
+      <AmountSteps compact onAdd={(n) => setAmount((a) => addAmount(a, n))} onClear={() => setAmount('')} />
       {!isTransfer && (
         <select
           value={categoryId}
