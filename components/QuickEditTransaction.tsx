@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { Category } from '@/lib/supabase'
 import AmountSteps, { addAmount } from '@/components/AmountSteps'
+import { visibleCategories } from '@/lib/input-defaults'
 
 export type QuickEditable = {
   id: string
@@ -17,11 +18,13 @@ export type QuickEditable = {
 export default function QuickEditTransaction({
   txn,
   categories,
+  hiddenCategoryIds = [],
   onSaved,
   onCancel,
 }: {
   txn: QuickEditable
   categories: Category[]
+  hiddenCategoryIds?: string[]
   onSaved: (updated: Record<string, unknown>) => void
   onCancel: () => void
 }) {
@@ -83,7 +86,7 @@ export default function QuickEditTransaction({
           className="w-full border border-indigo-300 rounded-lg px-2 py-1.5 text-sm bg-white"
         >
           <option value="">カテゴリなし</option>
-          {categories.filter((c) => c.type === txn.type).map((c) => (
+          {visibleCategories(categories, txn.type, hiddenCategoryIds, txn.category_id).map((c) => (
             <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
           ))}
         </select>

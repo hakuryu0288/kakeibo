@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { Transaction, Category, CreditCard, BankAccount, PointBalance } from '@/lib/supabase'
 import AmountSteps, { addAmount } from '@/components/AmountSteps'
-import { EMPTY_DEFAULTS, normalizeDefaults, type InputDefaults } from '@/lib/input-defaults'
+import { EMPTY_DEFAULTS, normalizeDefaults, visibleCategories, type InputDefaults } from '@/lib/input-defaults'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -151,7 +151,8 @@ export default function TransactionsPage() {
     }
   }, [])
 
-  const filteredCategories = categories.filter((c) => c.type === form.type)
+  // 入力の初期値で「出さない」にしたカテゴリは選択肢から外す
+  const filteredCategories = visibleCategories(categories, form.type, defaults.hidden_category_ids, form.category_id)
 
   const handleTypeChange = (type: 'income' | 'expense') => {
     // 金額・日付・メモはそのまま、支払い方法とカテゴリだけ初期値に切り替える
@@ -499,7 +500,7 @@ export default function TransactionsPage() {
                             className="w-full border border-indigo-300 rounded-lg px-1 py-0.5 text-xs bg-white"
                           >
                             <option value="">カテゴリなし</option>
-                            {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                            {visibleCategories(categories, t.type, defaults.hidden_category_ids, t.category_id).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                           </select>
                         </>
                       )}
@@ -522,7 +523,7 @@ export default function TransactionsPage() {
                         className="text-xs border border-slate-100 rounded px-1 py-0.5 bg-slate-50 text-slate-500 mt-1 max-w-full"
                       >
                         <option value="">カテゴリなし</option>
-                        {categories.filter((c) => c.type === t.type).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                        {visibleCategories(categories, t.type, defaults.hidden_category_ids, t.category_id).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                       </select>
                     )}
                   </div>
