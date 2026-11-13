@@ -42,6 +42,9 @@ function paymentPayload(key: string) {
   }
 }
 
+// 金額の入力欄の下に出す「足す」ボタン
+const AMOUNT_STEPS = [1, 10, 100, 1000, 10000]
+
 // 日付内の並び順（registered = 登録した順（新しい登録が上） / amount = 金額が大きい順）
 type SortMode = 'registered' | 'amount'
 const SORT_KEY = 'kakeibo-txn-sort'
@@ -282,8 +285,29 @@ export default function TransactionsPage() {
             </div>
             <div>
               <label className="text-xs text-slate-500">金額（円）</label>
-              <input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0" className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" required min={1} autoFocus inputMode="numeric" />
+              <input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0" className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" required min={1} inputMode="numeric" />
             </div>
+          </div>
+
+          {/* 金額をタップで足していくボタン（キーボードを出さずに入力できる） */}
+          <div className="grid grid-cols-6 gap-1.5 -mt-1">
+            {AMOUNT_STEPS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, amount: String((parseInt(f.amount) || 0) + n) }))}
+                className="py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium active:bg-indigo-100 active:scale-95 transition-transform select-none"
+              >
+                +{n.toLocaleString('ja-JP')}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, amount: '' }))}
+              className="py-2 rounded-lg bg-red-50 text-red-500 text-xs font-medium active:scale-95 transition-transform select-none"
+            >
+              クリア
+            </button>
           </div>
 
           {/* 支払い方法 */}
