@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import type { Transaction, Category, CreditCard, BankAccount, PointBalance } from '@/lib/supabase'
+import AmountSteps, { addAmount } from '@/components/AmountSteps'
+import { EMPTY_DEFAULTS, normalizeDefaults, type InputDefaults } from '@/lib/input-defaults'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -42,8 +45,41 @@ function paymentPayload(key: string) {
   }
 }
 
-// 金額の入力欄の下に出す「足す」ボタン
-const AMOUNT_STEPS = [1, 10, 100, 1000, 10000]
+type EntryForm = {
+  date: string
+  amount: string
+  type: 'income' | 'expense'
+  category_id: string
+  credit_card_id: string
+  bank_account_id: string
+  point_balance_id: string
+  payment: 'cash' | 'card' | 'bank'
+  memo: string
+}
+
+// 入力欄の初期状態（マスタ設定の「入力の初期値」を使う。削除済みのカード・口座・カテゴリは使わない）
+function blankForm(
+  type: 'income' | 'expense',
+  d: InputDefaults,
+  lists: { cards: CreditCard[]; accounts: BankAccount[]; categories: Category[] },
+): EntryForm {
+  const has = <T extends { id: string }>(arr: T[], id: string | null) => (id && arr.some((x) => x.id === id) ? id : '')
+  if (type === 'expense') {
+    return {
+      date: today(), amount: '', type, memo: '', point_balance_id: '',
+      payment: d.expense_payment,
+      credit_card_id: d.expense_payment === 'card' ? has(lists.cards, d.card_id) : '',
+      bank_account_id: d.expense_payment === 'bank' ? has(lists.accounts, d.bank_account_id) : '',
+      category_id: has(lists.categories.filter((c) => c.type === 'expense'), d.expense_category_id),
+    }
+  }
+  return {
+    date: today(), amount: '', type, memo: '', point_balance_id: '', credit_card_id: '',
+    payment: d.income_destination,
+    bank_account_id: d.income_destination === 'bank' ? has(lists.accounts, d.income_bank_account_id) : '',
+    category_id: has(lists.categories.filter((c) => c.type === 'income'), d.income_category_id),
+  }
+}
 
 // 日付内の並び順（registered = 登録した順（新しい登録が上） / amount = 金額が大きい順）
 type SortMode = 'registered' | 'amount'
@@ -69,17 +105,9 @@ export default function TransactionsPage() {
     typeof window !== 'undefined' && localStorage.getItem(SORT_KEY) === 'amount' ? 'amount' : 'registered'
   )
 
-  const [form, setForm] = useState({
-    date: today(),
-    amount: '',
-    type: 'expense' as 'income' | 'expense',
-    category_id: '',
-    credit_card_id: '',
-    bank_account_id: '',
-    point_balance_id: '',
-    payment: 'card' as 'cash' | 'card' | 'bank',
-    memo: '',
-  })
+  const [defaults, setDefaults] = useState<InputDefaults>(EMPTY_DEFAULTS)
+  const [form, setForm] = useState<EntryForm>(() => blankForm('expense', EMPTY_DEFAULTS, { cards: [], accounts: [], categories: [] }))
+  const lists = { cards, accounts, categories }
 
   // silent=true のときは「読み込み中」を出さずに裏で取り直す（スクロール位置を保つ）
   const fetchData = (silent = false) => {
@@ -90,12 +118,22 @@ export default function TransactionsPage() {
       fetch('/api/credit-cards').then((r) => r.json()),
       fetch('/api/bank-accounts').then((r) => r.json()),
       fetch('/api/point-balances').then((r) => r.json()),
-    ]).then(([txns, cats, cds, accs, pts]) => {
+      fetch('/api/settings').then((r) => r.json()).catch(() => null),
+    ]).then(([txns, cats, cds, accs, pts, st]) => {
+      const nextLists = {
+        categories: Array.isArray(cats) ? cats : [],
+        cards: Array.isArray(cds) ? cds : [],
+        accounts: Array.isArray(accs) ? accs : [],
+      }
+      const d = normalizeDefaults(st)
       setTransactions(Array.isArray(txns) ? txns : [])
-      setCategories(Array.isArray(cats) ? cats : [])
-      setCards(Array.isArray(cds) ? cds : [])
-      setAccounts(Array.isArray(accs) ? accs : [])
+      setCategories(nextLists.categories)
+      setCards(nextLists.cards)
+      setAccounts(nextLists.accounts)
       setPoints(Array.isArray(pts) ? pts : [])
+      setDefaults(d)
+      // まだ何も入力していなければ、初期値を入れる
+      setForm((f) => (f.amount === '' && f.memo === '' ? { ...blankForm(f.type, d, nextLists), date: f.date } : f))
       setLoading(false)
     })
   }
@@ -116,7 +154,8 @@ export default function TransactionsPage() {
   const filteredCategories = categories.filter((c) => c.type === form.type)
 
   const handleTypeChange = (type: 'income' | 'expense') => {
-    setForm({ ...form, type, category_id: '', credit_card_id: '', bank_account_id: '', point_balance_id: '', payment: type === 'expense' ? 'card' : 'cash' })
+    // 金額・日付・メモはそのまま、支払い方法とカテゴリだけ初期値に切り替える
+    setForm({ ...blankForm(type, defaults, lists), date: form.date, amount: form.amount, memo: form.memo })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -141,7 +180,7 @@ export default function TransactionsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    setForm({ date: today(), amount: '', type: 'expense', category_id: '', credit_card_id: '', bank_account_id: '', point_balance_id: '', payment: 'card', memo: '' })
+    setForm(blankForm('expense', defaults, lists))
     setShowForm(false)
     setSubmitting(false)
     fetchData(true)
@@ -264,7 +303,10 @@ export default function TransactionsPage() {
       {/* 入力フォーム */}
       {showForm ? (
         <form onSubmit={handleSubmit} className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-          <h2 className="text-sm font-semibold">収支入力</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">収支入力</h2>
+            <Link href="/settings?tab=defaults" className="text-xs text-slate-400 hover:text-indigo-600">初期値を変える</Link>
+          </div>
 
           {/* 収入/支出切り替え */}
           <div className="flex rounded-lg overflow-hidden border border-slate-200">
@@ -290,24 +332,11 @@ export default function TransactionsPage() {
           </div>
 
           {/* 金額をタップで足していくボタン（キーボードを出さずに入力できる） */}
-          <div className="grid grid-cols-6 gap-1.5 -mt-1">
-            {AMOUNT_STEPS.map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, amount: String((parseInt(f.amount) || 0) + n) }))}
-                className="py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium active:bg-indigo-100 active:scale-95 transition-transform select-none"
-              >
-                +{n.toLocaleString('ja-JP')}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setForm((f) => ({ ...f, amount: '' }))}
-              className="py-2 rounded-lg bg-red-50 text-red-500 text-xs font-medium active:scale-95 transition-transform select-none"
-            >
-              クリア
-            </button>
+          <div className="-mt-1">
+            <AmountSteps
+              onAdd={(n) => setForm((f) => ({ ...f, amount: addAmount(f.amount, n) }))}
+              onClear={() => setForm((f) => ({ ...f, amount: '' }))}
+            />
           </div>
 
           {/* 支払い方法 */}
@@ -435,7 +464,8 @@ export default function TransactionsPage() {
                 : t.point_balances ? `⭐ ${t.point_balances.name}`
                 : '💴 現金'
               return (
-              <div key={t.id} className="flex items-center justify-between px-4 py-3 gap-2">
+              <div key={t.id}>
+              <div className="flex items-center justify-between px-4 py-3 gap-2">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <span className="text-xl">{isTransfer ? '🔁' : t.categories?.icon ?? '📦'}</span>
                   <div className="min-w-0 flex-1">
@@ -513,7 +543,7 @@ export default function TransactionsPage() {
                           onChange={(e) => setEditAmount(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') handleEditSave(t.id); if (e.key === 'Escape') setEditingId(null) }}
                           className="w-24 border border-indigo-300 rounded-lg px-2 py-0.5 text-sm text-right"
-                          autoFocus
+                          inputMode="numeric"
                           min={1}
                         />
                         <button onClick={() => handleEditSave(t.id)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1">保存</button>
@@ -530,6 +560,13 @@ export default function TransactionsPage() {
                     </>
                   )}
                 </div>
+              </div>
+              {/* 修正中は金額の「足す」ボタンを行の下に横いっぱいで出す */}
+              {editingId === t.id && (
+                <div className="px-4 pb-3 -mt-1">
+                  <AmountSteps compact onAdd={(n) => setEditAmount((a) => addAmount(a, n))} onClear={() => setEditAmount('')} />
+                </div>
+              )}
               </div>
               )
             })}

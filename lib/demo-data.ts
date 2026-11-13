@@ -166,6 +166,7 @@ export function getDemoResponse(url: string): unknown {
   if (path === '/api/cash-memos')        return DEMO_CASH_MEMOS
   if (path === '/api/calendar-memos')    return []
   if (path === '/api/home-memo')         return { content: '', updated_at: null }
+  if (path === '/api/settings')          return { expense_payment: 'card', card_id: 'demo-card-1', bank_account_id: null, expense_category_id: 'demo-cat-food', income_destination: 'bank', income_bank_account_id: 'demo-bank-2', income_category_id: 'demo-cat-salary' }
   if (path === '/api/point-redemptions') return []
   if (path === '/api/card-monthly-overrides') return []
   if (path === '/api/prices') {
