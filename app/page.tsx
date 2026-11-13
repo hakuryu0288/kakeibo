@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { Category } from '@/lib/supabase'
 import QuickEditTransaction from '@/components/QuickEditTransaction'
+import { normalizeDefaults } from '@/lib/input-defaults'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -90,12 +91,14 @@ export default function DashboardPage() {
   // 最近の取引のその場編集
   const [editingTxnId, setEditingTxnId] = useState<string | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  const [hiddenCategoryIds, setHiddenCategoryIds] = useState<string[]>([])
 
   const startEditTxn = (id: string) => {
     setEditingTxnId(id)
     // カテゴリは編集するときに初めて読む（ホームを開くたびには読まない）
     if (categories.length === 0) {
       fetch('/api/categories').then((r) => r.json()).then((c) => setCategories(Array.isArray(c) ? c : [])).catch(() => {})
+      fetch('/api/settings').then((r) => r.json()).then((st) => setHiddenCategoryIds(normalizeDefaults(st).hidden_category_ids)).catch(() => {})
     }
   }
 
@@ -361,6 +364,7 @@ export default function DashboardPage() {
                     key={t.id}
                     txn={t}
                     categories={categories}
+                    hiddenCategoryIds={hiddenCategoryIds}
                     onSaved={(u) => onTxnSaved(t.id, u)}
                     onCancel={() => setEditingTxnId(null)}
                   />

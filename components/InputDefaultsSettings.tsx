@@ -115,6 +115,40 @@ export default function InputDefaultsSettings({ cards, accounts }: { cards: Cred
         </div>
       </div>
 
+      <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700">入力欄に出すカテゴリ</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            オフにしたカテゴリは、収支を入力・修正するときの選択肢に出なくなります。サブスクの設定やレポートではこれまでどおり使えます。
+          </p>
+        </div>
+        {(['expense', 'income'] as const).map((type) => (
+          <div key={type}>
+            <p className={`text-xs font-semibold mb-1.5 ${type === 'expense' ? 'text-red-600' : 'text-green-600'}`}>{type === 'expense' ? '支出' : '収入'}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {categories.filter((c) => c.type === type).map((c) => {
+                const shown = !d.hidden_category_ids.includes(c.id)
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => update({
+                      hidden_category_ids: shown
+                        ? [...d.hidden_category_ids, c.id]
+                        : d.hidden_category_ids.filter((id) => id !== c.id),
+                    })}
+                    className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${shown ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-400 line-through'}`}
+                    aria-pressed={shown}
+                  >
+                    {c.icon} {c.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <p className={`text-xs text-center ${status === 'error' ? 'text-red-500' : 'text-slate-400'}`}>
         {status === 'saving' ? '保存中...'
           : status === 'saved' ? '保存しました。次に収支を入力するときから使われます'
