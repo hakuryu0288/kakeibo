@@ -3,23 +3,9 @@
 import { useEffect, useState } from 'react'
 import type { Investment } from '@/lib/supabase'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
-
-const MARKET_ITEMS = [
-  { label: 'S&P500', ticker: '^GSPC' },
-  { label: '日経225', ticker: '^N225' },
-  { label: '金', ticker: 'GC=F' },
-  { label: 'FANG+', ticker: '^NYFANG' },
-  { label: 'オルカン参考(ACWI)', ticker: 'ACWI' },
-]
+import MarketCharts from '@/components/MarketCharts'
 
 const CHART_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#06b6d4', '#ec4899', '#8b5cf6', '#14b8a6', '#ef4444']
-
-type MarketPrice = {
-  label: string
-  ticker: string
-  price: number | null
-  loading: boolean
-}
 
 function formatYen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -74,25 +60,6 @@ export default function InvestmentsPage() {
   const [fetchingPrice, setFetchingPrice] = useState(false)
   const [form, setForm] = useState(defaultForm)
   const [usdJpy, setUsdJpy] = useState<number | null>(null)
-  const [marketPrices, setMarketPrices] = useState<MarketPrice[]>(
-    MARKET_ITEMS.map((m) => ({ ...m, price: null, loading: true }))
-  )
-
-  useEffect(() => {
-    MARKET_ITEMS.forEach(async (item, i) => {
-      try {
-        const res = await fetch(`/api/prices?ticker=${encodeURIComponent(item.ticker)}`)
-        const json = await res.json()
-        setMarketPrices((prev) =>
-          prev.map((m, idx) => idx === i ? { ...m, price: json.price ?? null, loading: false } : m)
-        )
-      } catch {
-        setMarketPrices((prev) =>
-          prev.map((m, idx) => idx === i ? { ...m, loading: false } : m)
-        )
-      }
-    })
-  }, [])
 
   const fetchInvestments = async () => {
     setLoading(true)
@@ -208,8 +175,10 @@ export default function InvestmentsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('この銘柄を削除しますか？')) return
-    await fetch(`/api/investments?id=${id}`, { method: 'DELETE' })
-    fetchInvestments()
+    // 一覧から外すだけで済むので、価格を取り直さない
+    const res = await fetch(`/api/investments?id=${id}`, { method: 'DELETE' })
+    if (res.ok) setInvestments((prev) => prev.filter((i) => i.id !== id))
+    else fetchInvestments()
   }
 
   // チャート用データ
@@ -230,34 +199,15 @@ export default function InvestmentsPage() {
   return (
     <div className="space-y-4 pb-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">投資ポートフォリオ</h1>
+        <h1 className="text-xl font-bold">投資・相場</h1>
         <button
           onClick={() => { setForm(defaultForm); setShowForm(true) }}
           className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold"
         >＋ 追加</button>
       </div>
 
-      {/* 相場モニター */}
-      <div className="bg-white rounded-xl p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-700 mb-1">相場モニター</h2>
-        <p className="text-xs text-slate-400 mb-3">※ 15〜20分遅延の参考値</p>
-        <div className="grid grid-cols-5 gap-1 text-center">
-          {marketPrices.map((m) => (
-            <div key={m.ticker} className="bg-slate-50 rounded-lg p-2">
-              <p className="text-xs text-slate-500 leading-tight mb-1">{m.label}</p>
-              <p className="text-xs font-semibold text-slate-700">
-                {m.loading ? (
-                  <span className="text-slate-300">…</span>
-                ) : m.price != null ? (
-                  m.price.toLocaleString('ja-JP', { maximumFractionDigits: 0 })
-                ) : (
-                  <span className="text-slate-300">—</span>
-                )}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* 相場の動き（グラフ） */}
+      <MarketCharts />
 
       {/* 追加フォーム */}
       {showForm && (
@@ -323,7 +273,13 @@ export default function InvestmentsPage() {
       {loading ? (
         <div className="text-center py-12 text-slate-400">読み込み中...</div>
       ) : investments.length === 0 ? (
-        <div className="text-center py-12 text-slate-400">銘柄を追加してください</div>
+        <div className="bg-white rounded-xl p-4 shadow-sm text-sm text-slate-600 space-y-2">
+          <p className="font-semibold text-slate-700">自分の保有銘柄</p>
+          <p className="text-xs leading-relaxed text-slate-500">
+            持っている投資信託や株を「＋ 追加」で登録すると、いまの評価額・買ったときからの損益・構成の円グラフが見られます。
+            NISAの残高だけを記録したいときは、資産画面の「NISA」タブで十分です。
+          </p>
+        </div>
       ) : (
         <>
           {/* ポートフォリオ合計 */}

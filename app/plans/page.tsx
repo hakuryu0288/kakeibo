@@ -100,9 +100,39 @@ export default function PlansPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const post = async (url: string, body: object) => { await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); fetchAll() }
-  const patch = async (url: string, body: object) => { await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); fetchAll() }
-  const del = async (url: string, id: string, msg: string) => { if (!confirm(msg)) return; await fetch(`${url}?id=${id}`, { method: 'DELETE' }); fetchAll() }
+  // 変更したリストだけを読み直す（以前は変更のたびに8種類のデータを全部読み直していた）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type ListSetter = React.Dispatch<React.SetStateAction<any[]>>
+  const listSetter = (url: string): ListSetter | null => {
+    if (url === '/api/subscriptions') return setSubscriptions as ListSetter
+    if (url === '/api/fixed-costs') return setFixedCosts as ListSetter
+    if (url === '/api/planned-expenses') return setAllPlannedExpenses as ListSetter
+    if (url === '/api/wish-list') return setWishList as ListSetter
+    return null
+  }
+  const reloadList = async (url: string) => {
+    const setter = listSetter(url)
+    if (!setter) return fetchAll()
+    const data = await fetch(url).then((r) => r.json()).catch(() => null)
+    if (Array.isArray(data)) setter(data)
+  }
+
+  const post = async (url: string, body: object) => {
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    await reloadList(url)
+  }
+  const patch = async (url: string, body: { id: string } & Record<string, unknown>) => {
+    // 先に画面だけ変えておき、保存後にそのリストだけ読み直す（カード名などの表示を正しくするため）
+    listSetter(url)?.((prev) => prev.map((x) => (x.id === body.id ? { ...x, ...body } : x)))
+    await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    await reloadList(url)
+  }
+  const del = async (url: string, id: string, msg: string) => {
+    if (!confirm(msg)) return
+    listSetter(url)?.((prev) => prev.filter((x) => x.id !== id))
+    const res = await fetch(`${url}?id=${id}`, { method: 'DELETE' })
+    if (!res.ok) await reloadList(url)
+  }
 
   // 欲しい → 確定出費へ移動
   const handleMoveToPlanned = async (wishId: string) => {
@@ -124,7 +154,7 @@ export default function PlansPage() {
     })
     await fetch(`/api/wish-list?id=${wishId}`, { method: 'DELETE' })
     setMoveWishId(null)
-    fetchAll()
+    await Promise.all([reloadList('/api/planned-expenses'), reloadList('/api/wish-list')])
   }
 
   // 確定出費 → 取引として登録
@@ -151,7 +181,7 @@ export default function PlansPage() {
       body: JSON.stringify({ id: plannedId, is_done: true }),
     })
     setRegisterPlannedId(null)
-    fetchAll()
+    await reloadList('/api/planned-expenses')
   }
 
   // 欲しい → 取引として登録（カードなし選択時は現金扱いで現金残高を減算）
@@ -180,7 +210,7 @@ export default function PlansPage() {
       body: JSON.stringify({ id: wishId, is_purchased: true }),
     })
     setRegisterWishId(null)
-    fetchAll()
+    await reloadList('/api/wish-list')
   }
 
   const expenseCategories = categories.filter((c) => c.type === 'expense')
