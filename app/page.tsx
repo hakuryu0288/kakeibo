@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import type { Category } from '@/lib/supabase'
+import QuickEditTransaction from '@/components/QuickEditTransaction'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -66,6 +68,8 @@ type RecentTransaction = {
   type: 'income' | 'expense' | 'transfer'
   transfer_direction?: 'withdraw' | 'deposit' | null
   memo: string | null
+  category_id?: string | null
+  created_at?: string
   categories?: { name: string; icon: string }
 }
 
@@ -83,6 +87,24 @@ export default function DashboardPage() {
   const [recentTxns, setRecentTxns] = useState<RecentTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [year, mon] = month.split('-')
+  // 最近の取引のその場編集
+  const [editingTxnId, setEditingTxnId] = useState<string | null>(null)
+  const [categories, setCategories] = useState<Category[]>([])
+
+  const startEditTxn = (id: string) => {
+    setEditingTxnId(id)
+    // カテゴリは編集するときに初めて読む（ホームを開くたびには読まない）
+    if (categories.length === 0) {
+      fetch('/api/categories').then((r) => r.json()).then((c) => setCategories(Array.isArray(c) ? c : [])).catch(() => {})
+    }
+  }
+
+  const onTxnSaved = (id: string, updated: Record<string, unknown>) => {
+    setRecentTxns((prev) => prev.map((t) => (t.id === id ? ({ ...t, ...updated } as RecentTransaction) : t)))
+    setEditingTxnId(null)
+    // 金額が変わると残高も変わるので、上の残高だけ裏で読み直す
+    fetch(`/api/summary?month=${month}`).then((r) => r.json()).then((sum) => { if (sum && !sum.error) setSummary(sum) }).catch(() => {})
+  }
 
   const [calcExpr, setCalcExpr] = useState('')
   const [calcResult, setCalcResult] = useState<number | null>(null)
@@ -207,7 +229,12 @@ export default function DashboardPage() {
       fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
     ]).then(([sum, txns]) => {
       setSummary(sum)
-      setRecentTxns(Array.isArray(txns) ? txns.slice(0, 5) : [])
+      const list: RecentTransaction[] = Array.isArray(txns) ? txns : []
+      // 今月は「登録した順」の新しい5件（登録直後に直せるように）。過去の月は日付順
+      const recent = month === currentMonth()
+        ? [...list].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 5)
+        : list.slice(0, 5)
+      setRecentTxns(recent)
       setLoading(false)
     })
   }, [month])
@@ -317,7 +344,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl p-4 shadow-sm">
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-sm font-semibold text-slate-700">
-            {isPastMonth ? `${mon}月の取引` : '最近の取引'}
+            {isPastMonth ? `${mon}月の取引` : '最近登録した取引'}
           </h2>
           <Link href="/transactions" className="text-xs text-indigo-600">すべて見る</Link>
         </div>
@@ -328,6 +355,17 @@ export default function DashboardPage() {
             {recentTxns.map((t) => {
               const isTransfer = t.type === 'transfer'
               const cashIncreases = isTransfer ? t.transfer_direction === 'withdraw' : t.type === 'income'
+              if (editingTxnId === t.id) {
+                return (
+                  <QuickEditTransaction
+                    key={t.id}
+                    txn={t}
+                    categories={categories}
+                    onSaved={(u) => onTxnSaved(t.id, u)}
+                    onCancel={() => setEditingTxnId(null)}
+                  />
+                )
+              }
               return (
               <div key={t.id} className="flex items-start justify-between py-2 gap-2">
                 <div className="flex items-start gap-2 min-w-0 flex-1">
@@ -339,9 +377,16 @@ export default function DashboardPage() {
                     {t.memo && <p className="text-xs text-slate-500 break-words">📝 {t.memo}</p>}
                   </div>
                 </div>
-                <span className={`text-sm font-bold shrink-0 ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                  {cashIncreases ? '+' : '-'}{yen(t.amount)}
-                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className={`text-sm font-bold ${isTransfer ? 'text-indigo-600' : t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                    {cashIncreases ? '+' : '-'}{yen(t.amount)}
+                  </span>
+                  <button
+                    onClick={() => startEditTxn(t.id)}
+                    className="text-slate-300 hover:text-indigo-500 text-sm px-1"
+                    aria-label="この取引を編集"
+                  >✏</button>
+                </div>
               </div>
               )
             })}

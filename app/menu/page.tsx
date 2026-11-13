@@ -9,7 +9,7 @@ const menuItems = [
   { href: '/transactions', icon: '💸', label: '収支一覧', desc: '収入・支出の入力と確認' },
   { href: '/summary', icon: '🔍', label: '集計', desc: '期間を指定して取引と収支を確認' },
   { href: '/reports', icon: '📊', label: 'レポート', desc: '月次グラフと推移' },
-  { href: '/investments', icon: '📈', label: '投資・相場', desc: 'ポートフォリオと相場モニター' },
+  { href: '/investments', icon: '📈', label: '投資・相場', desc: '相場のグラフと保有銘柄' },
   { href: '/calendar', icon: '📅', label: 'カレンダー', desc: '日別収支とメモ' },
   { href: '/categories', icon: '⚙️', label: 'カテゴリ設定', desc: 'カテゴリと予算上限の管理' },
   { href: '/settings', icon: '🗂️', label: 'マスタ設定', desc: 'クレカ・口座の追加・編集・削除' },

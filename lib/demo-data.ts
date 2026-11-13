@@ -170,7 +170,21 @@ export function getDemoResponse(url: string): unknown {
   if (path === '/api/card-monthly-overrides') return []
   if (path === '/api/prices') {
     const ticker = urlObj.searchParams.get('ticker') ?? ''
-    return DEMO_PRICES[ticker] ?? { ticker, price: 1000, currency: 'JPY', name: ticker }
+    const base = DEMO_PRICES[ticker] ?? { ticker, price: 1000, currency: 'JPY', name: ticker }
+    const range = urlObj.searchParams.get('range')
+    if (!range) return base
+    // デモ用のなだらかな推移（期間の最初から今の値まで、少し波打ちながら動く）
+    const n = 60
+    const now = Math.floor(Date.now() / 1000)
+    const span = ({ '1mo': 30, '6mo': 182, '1y': 365, '5y': 1825 } as Record<string, number>)[range] ?? 365
+    const seed = ticker.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+    const start = base.price * (0.85 + (seed % 25) / 100)
+    const points = Array.from({ length: n }, (_, i) => {
+      const r = i / (n - 1)
+      const wave = Math.sin(i / 4 + seed) * base.price * 0.02
+      return { t: now - Math.round((1 - r) * span * 86400), c: Math.round((start + (base.price - start) * r + wave) * 100) / 100 }
+    })
+    return { ...base, range, points }
   }
 
   // 未定義のエンドポイントはnullを返す（実際のAPIに通す）
