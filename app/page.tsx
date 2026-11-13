@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { Category } from '@/lib/supabase'
 import QuickEditTransaction from '@/components/QuickEditTransaction'
 import { normalizeDefaults } from '@/lib/input-defaults'
+import { loadEntryCache, saveEntryCache } from '@/lib/entry-cache'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -97,7 +98,17 @@ export default function DashboardPage() {
     setEditingTxnId(id)
     // カテゴリは編集するときに初めて読む（ホームを開くたびには読まない）
     if (categories.length === 0) {
-      fetch('/api/categories').then((r) => r.json()).then((c) => setCategories(Array.isArray(c) ? c : [])).catch(() => {})
+      // 前回この端末で読んだ内容があれば、待たずにそれを使い、裏で最新に更新する
+      const cached = loadEntryCache()
+      if (cached) {
+        setCategories(cached.categories)
+        setHiddenCategoryIds(cached.defaults.hidden_category_ids)
+      }
+      fetch('/api/categories').then((r) => r.json()).then((c) => {
+        if (!Array.isArray(c)) return
+        setCategories(c)
+        saveEntryCache({ categories: c })
+      }).catch(() => {})
       fetch('/api/settings').then((r) => r.json()).then((st) => setHiddenCategoryIds(normalizeDefaults(st).hidden_category_ids)).catch(() => {})
     }
   }
