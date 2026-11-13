@@ -242,29 +242,19 @@ export default function DashboardPage() {
       <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-5 text-white shadow-lg">
         <p className="text-xs opacity-70">総資産</p>
         <p className="text-3xl font-bold mt-1">{yen(summary.totalAssets)}</p>
+        <p className="text-xs opacity-70 mt-1">次月末残高予測 {yen(summary.projectedBalance)}</p>
+        {/* 内訳。タップするとそれぞれの管理画面へ（見た目は今までどおり控えめに） */}
         <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
-          <div className="bg-white/10 rounded-lg p-2">
-            <p className="opacity-70">次月末残高</p>
-            <p className="font-semibold">{yen(summary.projectedBalance)}</p>
-          </div>
-          <div className="bg-white/10 rounded-lg p-2">
-            <p className="opacity-70">NISA</p>
-            <p className="font-semibold">{yen(summary.nisaBalance)}</p>
-          </div>
-          <div className="bg-white/10 rounded-lg p-2">
-            <p className="opacity-70">現金</p>
-            <p className="font-semibold">{yen(summary.cashAmount)}</p>
-          </div>
-          <div className="bg-white/10 rounded-lg p-2">
-            <p className="opacity-70">商材</p>
-            <p className="font-semibold">{yen(summary.resaleValue)}</p>
-          </div>
+          <AssetTile href="/assets?tab=bank" label="銀行" value={summary.totalBankBalance} />
+          <AssetTile href="/accounts?tab=cash" label="現金" value={summary.cashAmount} />
+          <AssetTile href="/assets?tab=resale" label="商材" value={summary.resaleValue} />
+          <AssetTile href="/assets?tab=nisa" label="NISA" value={summary.nisaBalance} />
         </div>
       </div>
 
       {!isPastMonth && (
         <Link
-          href="/transactions"
+          href="/transactions?new=1"
           className="block w-full bg-indigo-600 text-white text-center py-3 rounded-xl font-semibold shadow hover:bg-indigo-700 transition-colors"
         >
           ＋ 収支を入力する
@@ -361,7 +351,7 @@ export default function DashboardPage() {
 
       {!isPastMonth && (
         <Link
-          href="/transactions"
+          href="/transactions?new=1"
           className="block w-full bg-indigo-600 text-white text-center py-3 rounded-xl font-semibold shadow hover:bg-indigo-700 transition-colors"
         >
           ＋ 収支を入力する
@@ -459,6 +449,15 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function AssetTile({ href, label, value }: { href: string; label: string; value: number }) {
+  return (
+    <Link href={href} className="block bg-white/10 hover:bg-white/15 active:bg-white/20 rounded-lg p-2 transition-colors">
+      <p className="opacity-70 flex justify-between"><span>{label}</span><span aria-hidden>›</span></p>
+      <p className="font-semibold">{yen(value)}</p>
+    </Link>
   )
 }
 

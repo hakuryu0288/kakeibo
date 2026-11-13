@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, Category, CreditCard, BankAccount, PointBalance } from '@/lib/supabase'
+import type { Transaction, Category, CreditCard, BankAccount, PointBalance } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -74,12 +74,13 @@ export default function TransactionsPage() {
     credit_card_id: '',
     bank_account_id: '',
     point_balance_id: '',
-    payment: 'card' as 'cash' | 'card' | 'bank' | 'points',
+    payment: 'card' as 'cash' | 'card' | 'bank',
     memo: '',
   })
 
-  const fetchData = () => {
-    setLoading(true)
+  // silent=true のときは「読み込み中」を出さずに裏で取り直す（スクロール位置を保つ）
+  const fetchData = (silent = false) => {
+    if (!silent) setLoading(true)
     Promise.all([
       fetch(`/api/transactions?month=${month}`).then((r) => r.json()),
       fetch('/api/categories').then((r) => r.json()),
@@ -99,6 +100,16 @@ export default function TransactionsPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [month])
 
+  // ホームの「収支を入力する」から来たとき（?new=1）は入力欄を最初から開く。
+  // ?new=1 はURLに残さない（再読み込みで入力欄が開き直さないように）
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('new') === '1') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowForm(true)
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+  }, [])
+
   const filteredCategories = categories.filter((c) => c.type === form.type)
 
   const handleTypeChange = (type: 'income' | 'expense') => {
@@ -117,8 +128,9 @@ export default function TransactionsPage() {
       category_id: form.category_id || null,
       memo: form.memo || null,
       credit_card_id: form.type === 'expense' && form.payment === 'card' ? form.credit_card_id || null : null,
-      bank_account_id: form.type === 'income' && form.payment === 'bank' ? form.bank_account_id || null : null,
-      point_balance_id: form.type === 'expense' && form.payment === 'points' ? form.point_balance_id || null : null,
+      // 銀行は収入の入金先にも、支出の支払い元にも使える
+      bank_account_id: form.payment === 'bank' ? form.bank_account_id || null : null,
+      point_balance_id: null,
     }
 
     await fetch('/api/transactions', {
@@ -129,13 +141,26 @@ export default function TransactionsPage() {
     setForm({ date: today(), amount: '', type: 'expense', category_id: '', credit_card_id: '', bank_account_id: '', point_balance_id: '', payment: 'card', memo: '' })
     setShowForm(false)
     setSubmitting(false)
-    fetchData()
+    fetchData(true)
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('この取引を削除しますか？')) return
-    await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' })
-    fetchData()
+    const res = await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' })
+    if (res.ok) setTransactions((prev) => prev.filter((t) => t.id !== id))
+    else fetchData(true)
+  }
+
+  // 1件の更新結果を画面に反映する（一覧全体は読み直さない）
+  const applyUpdated = async (id: string, res: Response, fallback: Partial<Transaction>) => {
+    if (!res.ok) { fetchData(true); return }
+    const body = await res.json().catch(() => null)
+    // サーバーが更新後の取引を返したらそれを使う（デモモードでは返らないので手元の値で更新）
+    const updated: Transaction | null = body && body.id === id && body.date ? body : null
+    setTransactions((prev) => prev
+      .map((t) => (t.id === id ? (updated ?? { ...t, ...fallback }) : t))
+      // 日付を別の月に変えたら、この月の一覧からは外す
+      .filter((t) => t.date.slice(0, 7) === month))
   }
 
   const handleEditSave = async (id: string) => {
@@ -146,23 +171,26 @@ export default function TransactionsPage() {
     const extra = txn && txn.type !== 'transfer'
       ? { category_id: editCategory || null, ...paymentPayload(editPayment) }
       : {}
-    await fetch('/api/transactions', {
+    setEditingId(null)
+    const res = await fetch('/api/transactions', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, amount, date: editDate, memo: editMemo, ...extra }),
     })
-    setEditingId(null)
-    fetchData()
+    await applyUpdated(id, res, { amount, date: editDate, memo: editMemo.trim() || null })
   }
 
   // 取引のカテゴリを後から変更する
   const handleCategoryChange = async (id: string, categoryId: string) => {
-    await fetch('/api/transactions', {
+    // 先に画面だけ変えておく（保存を待たずに次の操作ができるように）
+    const cat = categories.find((c) => c.id === categoryId)
+    setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, category_id: categoryId || null, categories: cat } : t)))
+    const res = await fetch('/api/transactions', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, category_id: categoryId || null }),
     })
-    fetchData()
+    await applyUpdated(id, res, {})
   }
 
   const cardUsage = cards.map((card) => ({
@@ -254,7 +282,7 @@ export default function TransactionsPage() {
             </div>
             <div>
               <label className="text-xs text-slate-500">金額（円）</label>
-              <input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0" className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" required min={1} />
+              <input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0" className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-1" required min={1} autoFocus inputMode="numeric" />
             </div>
           </div>
 
@@ -263,17 +291,17 @@ export default function TransactionsPage() {
             <div>
               <label className="text-xs text-slate-500">支払い方法</label>
               <div className="grid grid-cols-3 gap-2 mt-1">
-                <button type="button" onClick={() => setForm({ ...form, payment: 'cash', credit_card_id: '', point_balance_id: '' })}
+                <button type="button" onClick={() => setForm({ ...form, payment: 'cash', credit_card_id: '', bank_account_id: '' })}
                   className={`py-1.5 rounded-lg text-sm border transition-colors ${form.payment === 'cash' ? 'bg-slate-700 text-white border-slate-700' : 'border-slate-200 text-slate-500'}`}>
                   💴 現金
                 </button>
-                <button type="button" onClick={() => setForm({ ...form, payment: 'card', point_balance_id: '' })}
+                <button type="button" onClick={() => setForm({ ...form, payment: 'card', bank_account_id: '' })}
                   className={`py-1.5 rounded-lg text-sm border transition-colors ${form.payment === 'card' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-500'}`}>
                   💳 カード
                 </button>
-                <button type="button" onClick={() => setForm({ ...form, payment: 'points', credit_card_id: '' })}
-                  className={`py-1.5 rounded-lg text-sm border transition-colors ${form.payment === 'points' ? 'bg-yellow-500 text-white border-yellow-500' : 'border-slate-200 text-slate-500'}`}>
-                  ⭐ ポイント
+                <button type="button" onClick={() => setForm({ ...form, payment: 'bank', credit_card_id: '', bank_account_id: form.bank_account_id || (accounts.length === 1 ? accounts[0].id : '') })}
+                  className={`py-1.5 rounded-lg text-sm border transition-colors ${form.payment === 'bank' ? 'bg-green-600 text-white border-green-600' : 'border-slate-200 text-slate-500'}`}>
+                  🏦 銀行
                 </button>
               </div>
               {form.payment === 'card' && (
@@ -282,10 +310,10 @@ export default function TransactionsPage() {
                   {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               )}
-              {form.payment === 'points' && (
-                <select value={form.point_balance_id} onChange={(e) => setForm({ ...form, point_balance_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-2">
-                  <option value="">ポイントを選択</option>
-                  {points.map((p) => <option key={p.id} value={p.id}>{p.name}（{p.balance.toLocaleString('ja-JP')} pt）</option>)}
+              {form.payment === 'bank' && (
+                <select value={form.bank_account_id} onChange={(e) => setForm({ ...form, bank_account_id: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-sm mt-2" required>
+                  <option value="">口座を選択</option>
+                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}（残高 {yen(Number(a.balance))}）</option>)}
                 </select>
               )}
             </div>
@@ -403,7 +431,9 @@ export default function TransactionsPage() {
                             {t.type === 'expense' ? (
                               <>
                                 {cards.map((c) => <option key={c.id} value={`card:${c.id}`}>💳 {c.name}</option>)}
-                                {points.map((p) => <option key={p.id} value={`points:${p.id}`}>⭐ {p.name}</option>)}
+                                {accounts.map((a) => <option key={a.id} value={`bank:${a.id}`}>🏦 {a.name}</option>)}
+                                {/* ポイント払いは新規には選べない。過去にポイントで払った取引だけ、そのまま残せるようにする */}
+                                {points.filter((p) => p.id === t.point_balance_id).map((p) => <option key={p.id} value={`points:${p.id}`}>⭐ {p.name}</option>)}
                               </>
                             ) : (
                               accounts.map((a) => <option key={a.id} value={`bank:${a.id}`}>🏦 {a.name}</option>)

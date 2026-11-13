@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Investment } from '@/lib/supabase'
+import type { Investment } from '@/lib/supabase'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 
 const MARKET_ITEMS = [

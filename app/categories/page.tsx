@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Category } from '@/lib/supabase'
+import type { Category } from '@/lib/supabase'
 
 const COLORS = [
   '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316',

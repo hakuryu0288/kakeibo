@@ -50,34 +50,7 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // 残高自動更新
-  if (type === 'income') {
-    if (bank_account_id) {
-      const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', bank_account_id).single()
-      if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + amount }).eq('id', bank_account_id)
-    } else {
-      const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-      if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
-    }
-  } else if (type === 'expense') {
-    if (point_balance_id) {
-      // ポイント払い → ポイント残高を減算
-      const { data: pb } = await supabase.from('point_balances').select('balance').eq('id', point_balance_id).single()
-      if (pb) await supabase.from('point_balances').update({ balance: Number(pb.balance) - amount }).eq('id', point_balance_id)
-    } else if (!credit_card_id) {
-      // 現金払い → 現金を減算
-      const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-      if (cash) await supabase.from('cash_balance').update({ amount: cash.amount - amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
-    }
-    // カード払いはcredit_card_idで紐付けのみ
-  } else if (type === 'transfer' && bank_account_id) {
-    // 銀行⇔現金の振替: withdraw=銀行→現金（引き出し） / deposit=現金→銀行（預け入れ）
-    const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', bank_account_id).single()
-    const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-    const bankDelta = transfer_direction === 'withdraw' ? -amount : amount
-    const cashDelta = transfer_direction === 'withdraw' ? amount : -amount
-    if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + bankDelta }).eq('id', bank_account_id)
-    if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + cashDelta, updated_at: new Date().toISOString() }).eq('id', cash.id)
-  }
+  await applyBalance(data, 1)
 
   return NextResponse.json(data, { status: 201 })
 }
@@ -110,10 +83,14 @@ async function applyBalance(t: BalanceTarget, sign: 1 | -1) {
     if (t.point_balance_id) {
       const { data: pb } = await supabase.from('point_balances').select('balance').eq('id', t.point_balance_id).single()
       if (pb) await supabase.from('point_balances').update({ balance: Number(pb.balance) - amt }).eq('id', t.point_balance_id)
-    } else if (!t.credit_card_id) {
+    } else if (t.credit_card_id) {
+      // カード払いは残高に影響しない（引き落としは月次処理で反映）
+    } else if (t.bank_account_id) {
+      // 銀行口座から直接支払い
+      await addBank(t.bank_account_id, -amt)
+    } else {
       await addCash(-amt)
     }
-    // カード払いは残高に影響しない
   } else if (t.type === 'transfer' && t.bank_account_id) {
     // withdraw=銀行→現金 / deposit=現金→銀行
     const toCash = t.transfer_direction === 'withdraw' ? amt : -amt
@@ -139,10 +116,12 @@ export async function PATCH(req: NextRequest) {
   const paymentGiven = ['credit_card_id', 'bank_account_id', 'point_balance_id'].some((k) => k in body)
   if (paymentGiven && txn.type !== 'transfer') {
     if (txn.type === 'expense') {
+      // ポイント > カード > 銀行 > 現金 の順に1つだけ残す
       const pointId = body.point_balance_id || null
+      const cardId = pointId ? null : body.credit_card_id || null
       updates.point_balance_id = pointId
-      updates.credit_card_id = pointId ? null : body.credit_card_id || null
-      updates.bank_account_id = null
+      updates.credit_card_id = cardId
+      updates.bank_account_id = pointId || cardId ? null : body.bank_account_id || null
     } else {
       updates.bank_account_id = body.bank_account_id || null
       updates.credit_card_id = null
@@ -174,35 +153,8 @@ export async function DELETE(req: NextRequest) {
 
   const { data: txn } = await supabase.from('transactions').select('*').eq('id', id).single()
 
-  if (txn) {
-    if (txn.type === 'income') {
-      if (txn.bank_account_id) {
-        const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', txn.bank_account_id).single()
-        if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) - txn.amount }).eq('id', txn.bank_account_id)
-      } else {
-        const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-        if (cash) await supabase.from('cash_balance').update({ amount: cash.amount - txn.amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
-      }
-    } else if (txn.type === 'expense') {
-      if (txn.point_balance_id) {
-        // ポイント払いを戻す
-        const { data: pb } = await supabase.from('point_balances').select('balance').eq('id', txn.point_balance_id).single()
-        if (pb) await supabase.from('point_balances').update({ balance: Number(pb.balance) + txn.amount }).eq('id', txn.point_balance_id)
-      } else if (!txn.credit_card_id) {
-        // 現金払いを戻す
-        const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-        if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + txn.amount, updated_at: new Date().toISOString() }).eq('id', cash.id)
-      }
-    } else if (txn.type === 'transfer' && txn.bank_account_id) {
-      // 振替を取り消す（反対方向に戻す）
-      const bankDelta = txn.transfer_direction === 'withdraw' ? txn.amount : -txn.amount
-      const cashDelta = txn.transfer_direction === 'withdraw' ? -txn.amount : txn.amount
-      const { data: acc } = await supabase.from('bank_accounts').select('balance').eq('id', txn.bank_account_id).single()
-      if (acc) await supabase.from('bank_accounts').update({ balance: Number(acc.balance) + bankDelta }).eq('id', txn.bank_account_id)
-      const { data: cash } = await supabase.from('cash_balance').select('*').limit(1).single()
-      if (cash) await supabase.from('cash_balance').update({ amount: cash.amount + cashDelta, updated_at: new Date().toISOString() }).eq('id', cash.id)
-    }
-  }
+  // 取引が残高に与えていた影響を取り消す
+  if (txn) await applyBalance(txn, -1)
 
   const { error } = await supabase.from('transactions').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

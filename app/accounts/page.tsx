@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, ExpectedIncome, CardMonthlyOverride, MonthlyClosing, Category } from '@/lib/supabase'
+import type { BankAccount, CreditCard, CashBalance, CashMemo, Transaction, ExpectedIncome, CardMonthlyOverride, MonthlyClosing, Category } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -69,6 +69,12 @@ export default function AccountsPage() {
   const [cardOverrides, setCardOverrides] = useState<CardMonthlyOverride[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'card' | 'cash' | 'income'>('card')
+  // ホームから ?tab=cash などで直接開ける
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (t === 'cash' || t === 'income' || t === 'card') setTab(t)
+  }, [])
 
   const [cardMonth, setCardMonth] = useState(today)
   const [cardMonthYear, cardMonthMon] = cardMonth.split('-')
@@ -312,12 +318,13 @@ export default function AccountsPage() {
     setIsLoadingPreview(false)
   }
 
-  const runMonthlyProcess = async () => {
+  const runMonthlyProcess = async (recordOnly = false) => {
+    if (recordOnly && !confirm(`${processingYear}年${processingMon}月を、銀行残高を変えずに処理済みにします。\n（給料などは「月次処理済み」の表示になります）`)) return
     setIsRunningProcess(true)
     await fetch('/api/monthly-closings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ month: processingMonth }),
+      body: JSON.stringify({ month: processingMonth, record_only: recordOnly }),
     })
     setShowPreview(false)
     setPreview(null)
@@ -721,7 +728,11 @@ export default function AccountsPage() {
                   {currentClosing ? (
                     undoConfirm ? (
                       <div className="space-y-3">
-                        <p className="text-xs text-amber-600">⚠ 取り消すと銀行残高の変動が全て元に戻ります</p>
+                        <p className="text-xs text-amber-600">
+                          {currentClosing.snapshot.record_only
+                            ? '⚠ 処理済みの記録を消して、未処理に戻します（銀行残高は変わりません）'
+                            : '⚠ 取り消すと銀行残高の変動が全て元に戻ります'}
+                        </p>
                         <div className="flex gap-2">
                           <button onClick={() => setUndoConfirm(false)} className="flex-1 py-1.5 border border-slate-200 rounded-lg text-xs">キャンセル</button>
                           <button onClick={undoMonthlyProcess} className="flex-1 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-semibold">取り消す</button>
@@ -733,6 +744,9 @@ export default function AccountsPage() {
                           <span className="text-green-600 font-bold text-base">✓</span>
                           <span className="text-sm text-slate-700">{new Date(currentClosing.processed_at).toLocaleDateString('ja-JP')} 処理済み</span>
                         </div>
+                        {currentClosing.snapshot.record_only && (
+                          <p className="text-xs text-slate-500 bg-slate-50 rounded px-2 py-1 mb-2">銀行残高は変えずに、処理済みの記録だけ残した月です</p>
+                        )}
                         <div className="space-y-0.5 mb-3 text-xs text-slate-500">
                           {currentClosing.snapshot.details.salary.map((s) => (
                             <p key={s.income_id}>給料加算: +{yen(s.amount)}{s.bank_name ? ` → ${s.bank_name}` : ''}</p>
@@ -808,13 +822,23 @@ export default function AccountsPage() {
                       <div className="flex gap-2 pt-1">
                         <button onClick={() => { setShowPreview(false); setPreview(null) }} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm">キャンセル</button>
                         <button
-                          onClick={runMonthlyProcess}
+                          onClick={() => runMonthlyProcess()}
                           disabled={isRunningProcess || preview.bank_deltas.length === 0}
                           className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
                         >
                           {isRunningProcess ? '処理中...' : '実行する'}
                         </button>
                       </div>
+                      {/* 過去の月は、今の残高のまま「処理済み」にできる（月次処理を使い始める前の月の整理用） */}
+                      {processingMonth < today && (
+                        <button
+                          onClick={() => runMonthlyProcess(true)}
+                          disabled={isRunningProcess}
+                          className="w-full text-xs text-slate-500 hover:text-slate-700 underline underline-offset-2 py-1 disabled:opacity-50"
+                        >
+                          残高を変えずに処理済みにする
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <button

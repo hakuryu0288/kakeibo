@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, CalendarMemo } from '@/lib/supabase'
+import type { Transaction, CalendarMemo } from '@/lib/supabase'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
