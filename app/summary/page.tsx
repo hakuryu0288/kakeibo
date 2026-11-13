@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { Transaction, Category, CreditCard } from '@/lib/supabase'
+import { isNisaTxn } from '@/lib/report-rules'
 
 function yen(n: number) {
   return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(n)
@@ -121,7 +122,9 @@ export default function SummaryPage() {
   }
 
   const incomeTxns = transactions.filter((t) => t.type === 'income')
-  const expenseTxns = transactions.filter((t) => t.type === 'expense')
+  // NISA積立は支出に含めず別枠で表示する（一覧には残す）
+  const expenseTxns = transactions.filter((t) => t.type === 'expense' && !isNisaTxn(t))
+  const nisaTotal = transactions.filter(isNisaTxn).reduce((s, t) => s + t.amount, 0)
   const transferTxns = transactions.filter((t) => t.type === 'transfer')
 
   const income = incomeTxns.reduce((s, t) => s + t.amount, 0)
@@ -174,7 +177,7 @@ export default function SummaryPage() {
     }
     g.items.push(t)
     if (t.type === 'income') g.income += t.amount
-    if (t.type === 'expense') g.expense += t.amount
+    if (t.type === 'expense' && !isNisaTxn(t)) g.expense += t.amount
   }
 
   return (
@@ -258,6 +261,12 @@ export default function SummaryPage() {
               <p className="text-xs text-slate-400 mt-1 text-right">
                 1日あたりの支出 {yen(Math.round(expense / days))}
               </p>
+            )}
+            {nisaTotal > 0 && (
+              <div className="flex justify-between items-center mt-2 text-xs">
+                <span className="text-slate-500">NISA積立（別枠・収支に含めない）</span>
+                <span className="font-bold text-indigo-700">{yen(nisaTotal)}</span>
+              </div>
             )}
             {transferTxns.length > 0 && (
               <p className="text-xs text-slate-400 mt-2">

@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/subscriptions/auto-apply", "schedule": "5 15 * * *" }
+  ]
+}
